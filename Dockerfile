@@ -26,7 +26,7 @@ WORKDIR /app
 COPY packages/shared packages/shared
 
 # Build shared package
-RUN pnpm --filter @nofus/shared build
+RUN pnpm --filter @defense/shared build
 
 # Stage 3: Build frontend
 FROM shared-build AS web-build
@@ -37,7 +37,7 @@ WORKDIR /app
 COPY apps/web apps/web
 
 # Build frontend
-RUN pnpm --filter @nofus/web build
+RUN pnpm --filter @defense/web build
 
 # Stage 4: Build backend
 FROM shared-build AS server-build
@@ -48,7 +48,7 @@ WORKDIR /app
 COPY apps/server apps/server
 
 # Build backend
-RUN pnpm --filter @nofus/server build
+RUN pnpm --filter @defense/server build
 
 # Stage 5: Production runtime
 FROM oven/bun:slim AS runtime
@@ -62,8 +62,8 @@ COPY --from=server-build /app/apps/server/dist ./dist
 COPY --from=web-build /app/apps/web/dist ./public
 
 # Copy built shared package
-COPY --from=shared-build /app/packages/shared/dist ./node_modules/@nofus/shared/dist
-COPY --from=shared-build /app/packages/shared/package.json ./node_modules/@nofus/shared/
+COPY --from=shared-build /app/packages/shared/dist ./node_modules/@defense/shared/dist
+COPY --from=shared-build /app/packages/shared/package.json ./node_modules/@defense/shared/
 
 # Set environment variables
 ENV NODE_ENV=production
