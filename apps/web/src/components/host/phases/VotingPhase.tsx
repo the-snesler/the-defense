@@ -1,4 +1,4 @@
-import type { Player, Round } from "@nofus/shared";
+import type { Player, Round } from "@defense/shared";
 import PhaseProgress from "../components/PhaseProgress";
 
 interface VotingPhaseProps {

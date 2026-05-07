@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useWebSocket } from "../hooks/useWebSocket";
-import type { PlayerViewState } from "@nofus/shared";
+import type { PlayerViewState } from "@defense/shared";
 import PlayerLayout from "../components/player/PlayerLayout";
 import LoadingState from "../components/shared/LoadingState";
 import LobbyPhase from "../components/player/phases/LobbyPhase";

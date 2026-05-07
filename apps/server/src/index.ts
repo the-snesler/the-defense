@@ -11,7 +11,7 @@ import {
   handlePlayerJoin,
   handlePlayerReconnect,
 } from "./websocket";
-import { MessageTypes } from "@nofus/shared";
+import { MessageTypes } from "@defense/shared";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 const STATIC_DIR = process.env.STATIC_DIR; // Path to built frontend (e.g., /app/public)

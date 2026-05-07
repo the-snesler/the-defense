@@ -11,7 +11,7 @@ import {
   addPlayer,
   reconnectPlayer,
 } from './rooms';
-import { MessageTypes, type NetworkMessage } from '@nofus/shared';
+import { MessageTypes, type NetworkMessage } from '@defense/shared';
 
 export function handleOpen(ws: ServerWebSocket<WebSocketData>): void {
   const { roomCode, role, playerId } = ws.data;

@@ -1,4 +1,4 @@
-import type { Player, Round } from "@nofus/shared";
+import type { Player, Round } from "@defense/shared";
 
 interface PresentingPhaseProps {
   players: Record<string, Player>;

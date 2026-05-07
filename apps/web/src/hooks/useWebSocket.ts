@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { getWebSocketUrl } from '../lib/api';
-import type { NetworkMessage } from '@nofus/shared';
+import type { NetworkMessage } from '@defense/shared';
 
 interface UseWebSocketOptions {
   roomCode: string;

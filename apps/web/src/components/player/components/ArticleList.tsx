@@ -1,4 +1,4 @@
-import type { Article } from "@nofus/shared";
+import type { Article } from "@defense/shared";
 import ArticleCard from "./ArticleCard";
 
 interface ArticleListProps {

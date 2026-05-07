@@ -1,4 +1,4 @@
-import { PlayerViewState, GamePhase } from "@nofus/shared";
+import { PlayerViewState, GamePhase } from "@defense/shared";
 import { gameMachine } from "../machines/gameMachine";
 import { useMachine } from "@xstate/react";
 

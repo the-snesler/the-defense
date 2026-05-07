@@ -1,4 +1,4 @@
-import type { Player, Article } from "@nofus/shared";
+import type { Player, Article } from "@defense/shared";
 import PhaseProgress from "../components/PhaseProgress";
 
 interface TopicSelectionPhaseProps {

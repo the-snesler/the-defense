@@ -1,5 +1,5 @@
 import { setup, assign, and, fromPromise } from "xstate";
-import type { Player, Article, Round, RoomConfig } from "@nofus/shared";
+import type { Player, Article, Round, RoomConfig } from "@defense/shared";
 import { fetchArticlesForPlayer } from "../lib/wikipedia";
 
 // Scoring constants

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Article } from "@nofus/shared";
+import type { Article } from "@defense/shared";
 import SubmissionConfirm from "../components/SubmissionConfirm";
 
 interface WritingPhaseProps {

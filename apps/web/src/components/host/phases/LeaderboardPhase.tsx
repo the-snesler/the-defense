@@ -1,4 +1,4 @@
-import type { Player } from "@nofus/shared";
+import type { Player } from "@defense/shared";
 
 interface LeaderboardPhaseProps {
   players: Record<string, Player>;

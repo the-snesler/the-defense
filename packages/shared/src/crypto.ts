@@ -20,7 +20,7 @@ async function deriveKey(token: string): Promise<CryptoKey> {
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: encoder.encode('nofus-state-recovery'),
+      salt: encoder.encode('defense-state-recovery'),
       iterations: 100000,
       hash: 'SHA-256',
     },

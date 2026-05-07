@@ -1,4 +1,4 @@
-import type { Article } from "@nofus/shared";
+import type { Article } from "@defense/shared";
 
 interface PresentingPhaseProps {
   isExpert: boolean;

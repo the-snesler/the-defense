@@ -5,7 +5,7 @@ import { gameMachine } from "../machines/gameMachine";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useTimer } from "../hooks/useTimer";
 import { machineStateToPlayerViewState } from "../lib/api";
-import { encryptState, decryptState } from "@nofus/shared";
+import { encryptState, decryptState } from "@defense/shared";
 import HostLayout from "../components/host/HostLayout";
 import LobbyPhase from "../components/host/phases/LobbyPhase";
 import TutorialPhase from "../components/host/phases/TutorialPhase";

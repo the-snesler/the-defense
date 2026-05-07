@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createRoom } from '../lib/api';
-import { ROOM_CODE_LENGTH } from "@nofus/shared";
+import { ROOM_CODE_LENGTH } from "@defense/shared";
 
 export default function Lobby() {
   const navigate = useNavigate();

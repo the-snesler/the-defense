@@ -1,4 +1,4 @@
-import type { Article } from "@nofus/shared";
+import type { Article } from "@defense/shared";
 import ArticleList from "../components/ArticleList";
 import RerollButton from "../components/RerollButton";
 import SubmissionConfirm from "../components/SubmissionConfirm";

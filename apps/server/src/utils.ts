@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { ROOM_CODE_LENGTH } from '@nofus/shared';
+import { ROOM_CODE_LENGTH } from '@defense/shared';
 
 const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding confusing chars (0, O, I, 1)
 
