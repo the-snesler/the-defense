@@ -5,113 +5,105 @@ import { gameMachine } from "../machines/gameMachine";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useTimer } from "../hooks/useTimer";
 import { machineStateToPlayerViewState } from "../lib/api";
-import { encryptState, decryptState } from "@defense/shared";
+import {
+  encryptState,
+  decryptState,
+  type ReactionBurstPayload,
+} from "@defense/shared";
 import HostLayout from "../components/host/HostLayout";
-import LobbyPhase from "../components/host/phases/LobbyPhase";
-import TutorialPhase from "../components/host/phases/TutorialPhase";
-import TopicSelectionPhase from "../components/host/phases/TopicSelectionPhase";
-import WritingPhase from "../components/host/phases/WritingPhase";
-import GuessingPhase from "../components/host/phases/GuessingPhase";
-import PresentingPhase from "../components/host/phases/PresentingPhase";
-import VotingPhase from "../components/host/phases/VotingPhase";
-import RevealPhase from "../components/host/phases/RevealPhase";
-import LeaderboardPhase from "../components/host/phases/LeaderboardPhase";
 
 type GameActor = Actor<typeof gameMachine>;
 type GameSnapshot = SnapshotFrom<typeof gameMachine>;
 
-type RecoveryState = 
+type RecoveryState =
   | { status: "pending" }
   | { status: "not_needed" }
   | { status: "requesting" }
   | { status: "recovered"; snapshot: GameSnapshot }
   | { status: "failed" };
 
+// Only these message types are forwarded to the state machine.
+// Everything else (REACTION_BURST, recovery, lifecycle) is handled out-of-band.
+const MACHINE_EVENT_TYPES = new Set<string>([
+  "START_GAME",
+  "NEXT_PHASE",
+  "SUBMIT_SUBJECT",
+  "SUBMIT_PREDICATE",
+  "SUBMIT_QUESTION",
+  "SUBMIT_VERDICT",
+]);
+
+const REACTION_RATE_WINDOW_MS = 1000;
+const REACTION_RATE_MAX = 3;
+
 export default function Host() {
   const { code } = useParams<{ code: string }>();
   const hostToken = sessionStorage.getItem(`host_token_${code}`);
 
-  // Recovery state machine
   const [recoveryState, setRecoveryState] = useState<RecoveryState>({ status: "pending" });
   const recoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Actor management (not using useMachine so we can delay creation)
   const actorRef = useRef<GameActor | null>(null);
   const [state, setState] = useState<GameSnapshot | null>(null);
 
-  // Initialize actor once recovery status is determined
+  // Rolling timestamps per player for reaction rate-limiting.
+  const reactionTimestampsRef = useRef<Map<string, number[]>>(new Map());
+  // Recent reaction bursts (consumed by ReactionParticles in step 6).
+  const [, setReactionBursts] = useState<ReactionBurstPayload[]>([]);
+
   const initializeActor = useCallback((snapshot?: GameSnapshot) => {
-    if (actorRef.current) {
-      actorRef.current.stop();
-    }
-    const actor = createActor(gameMachine, {
-      snapshot,
-    });
-
-    actor.subscribe((newState) => {
-      setState(newState);
-    });
-
+    if (actorRef.current) actorRef.current.stop();
+    const actor = createActor(gameMachine, { snapshot });
+    actor.subscribe((newState) => setState(newState));
     actor.start();
     actorRef.current = actor;
     setState(actor.getSnapshot());
     console.log("Game actor initialized", actor.getSnapshot());
-    
-    // If recovering into topicSelection, re-trigger article fetching
-    // since async actions are lost on crash
-    if (snapshot && actor.getSnapshot().matches("topicSelection")) {
-      actor.send({ type: "REFETCH_ARTICLES" });
-    }
   }, []);
 
-  // Send function that forwards to the actor
   const send = useCallback((event: Parameters<GameActor["send"]>[0]) => {
-    if (actorRef.current) {
-      actorRef.current.send(event);
-    }
+    if (actorRef.current) actorRef.current.send(event);
   }, []);
 
   const { isConnected, sendMessage } = useWebSocket({
     roomCode: code!,
     token: hostToken!,
     onMessage: (message) => {
+      // === Lifecycle: HOST_CONNECTED triggers recovery decision ===
       if (message.type === "HOST_CONNECTED") {
         const players = (message.payload as { players: { id: string; name: string }[] }).players;
-        
         if (players.length > 0 && recoveryState.status === "pending") {
-          // Players exist, we crashed - request recovery
           const randomPlayer = players[Math.floor(Math.random() * players.length)];
           console.log("Requesting state recovery from player", randomPlayer.id);
-          
           setRecoveryState({ status: "requesting" });
-          
-          // Set a timeout in case player doesn't respond
           recoveryTimeoutRef.current = setTimeout(() => {
             console.warn("Recovery timeout - starting fresh");
             setRecoveryState({ status: "failed" });
             initializeActor();
           }, 5000);
-          
           sendMessage({
             type: "REQUEST_STATE_RECOVERY",
             target: randomPlayer.id,
             payload: {},
           });
         } else if (recoveryState.status === "pending") {
-          // No players, no recovery needed - start fresh
           console.log("No players connected, starting fresh game");
           setRecoveryState({ status: "not_needed" });
           initializeActor();
         }
+        return;
       }
 
-      // Handle state recovery response
-      if (message.type === "PROVIDE_STATE_RECOVERY" && hostToken && recoveryState.status === "requesting") {
+      // === Recovery response ===
+      if (
+        message.type === "PROVIDE_STATE_RECOVERY" &&
+        hostToken &&
+        recoveryState.status === "requesting"
+      ) {
         if (recoveryTimeoutRef.current) {
           clearTimeout(recoveryTimeoutRef.current);
           recoveryTimeoutRef.current = null;
         }
-        
         const payload = message.payload as { encryptedHostState: string };
         decryptState(payload.encryptedHostState, hostToken)
           .then((recoveredSnapshot: unknown) => {
@@ -128,57 +120,89 @@ export default function Host() {
         return;
       }
 
-      // Forward messages to state machine (only if actor exists)
-      if (actorRef.current) {
+      // === Reactions: rate-limit, then re-broadcast as REACTION_BURST. Never reach the machine. ===
+      if (message.type === "SEND_REACTION") {
+        const senderId = message.senderId;
+        if (!senderId) return;
+        const now = Date.now();
+        const timestamps = reactionTimestampsRef.current.get(senderId) ?? [];
+        const recent = timestamps.filter((t) => now - t < REACTION_RATE_WINDOW_MS);
+        if (recent.length >= REACTION_RATE_MAX) return;
+        recent.push(now);
+        reactionTimestampsRef.current.set(senderId, recent);
+        const payload = message.payload as { reaction: "LAUGH" | "FIRE" };
+        const burst: ReactionBurstPayload = {
+          reaction: payload.reaction,
+          fromPlayerId: senderId,
+          clientTimestamp: now,
+        };
+        sendMessage({ type: "REACTION_BURST", target: "ALL", payload: burst });
+        // Host also animates locally (server doesn't echo to sender).
+        setReactionBursts((prev) => [...prev.slice(-50), burst]);
+        return;
+      }
+
+      // === Player lifecycle goes to the machine ===
+      if (
+        message.type === "PLAYER_CONNECTED" ||
+        message.type === "PLAYER_DISCONNECTED"
+      ) {
+        if (actorRef.current) {
+          const payload = message.payload as Record<string, unknown> | undefined;
+          send({
+            type: message.type,
+            ...payload,
+            senderId: message.senderId,
+          } as unknown as Parameters<typeof send>[0]);
+        }
+        return;
+      }
+
+      // === Allowlist: only forward known game-machine events ===
+      if (actorRef.current && MACHINE_EVENT_TYPES.has(message.type)) {
         const payload = message.payload as Record<string, unknown> | undefined;
         send({
           type: message.type,
           ...payload,
           senderId: message.senderId,
-        } as Parameters<typeof send>[0]);
+        } as unknown as Parameters<typeof send>[0]);
       }
     },
   });
 
-  // Timer management (only run when state exists)
   useTimer(
     state?.context?.timer ?? null,
     () => send({ type: "TIMER_TICK" }),
     () => send({ type: "TIMER_END" }),
   );
 
-  // Send state changes to players
+  // Sync state to all players on every change.
   useEffect(() => {
-    if (isConnected && hostToken && state && actorRef.current && state.status !== "stopped") {
-      // Get the persisted snapshot for proper serialization
+    if (
+      isConnected &&
+      hostToken &&
+      state &&
+      actorRef.current &&
+      state.status !== "stopped"
+    ) {
       const persistedSnapshot = actorRef.current.getPersistedSnapshot();
-
-      // Encrypt the full state
-      encryptState(persistedSnapshot, hostToken).then((encryptedHostState) => {
-        // Send to all players
-        for (const target of Object.keys(state.context.players)) {
-          const payload = {
-            ...machineStateToPlayerViewState(state, target),
-            encryptedHostState,
-          };
-          sendMessage({
-            type: "SYNC_STATE",
-            target,
-            payload,
-          });
-        }
-      }).catch((err: unknown) => {
-        console.error("Failed to encrypt state:", err);
-        // Fall back to sending without encrypted state
-        for (const target of Object.keys(state.context.players)) {
-          const payload = machineStateToPlayerViewState(state, target);
-          sendMessage({
-            type: "SYNC_STATE",
-            target,
-            payload,
-          });
-        }
-      });
+      encryptState(persistedSnapshot, hostToken)
+        .then((encryptedHostState) => {
+          for (const target of Object.keys(state.context.players)) {
+            const payload = {
+              ...machineStateToPlayerViewState(state, target),
+              encryptedHostState,
+            };
+            sendMessage({ type: "SYNC_STATE", target, payload });
+          }
+        })
+        .catch((err: unknown) => {
+          console.error("Failed to encrypt state:", err);
+          for (const target of Object.keys(state.context.players)) {
+            const payload = machineStateToPlayerViewState(state, target);
+            sendMessage({ type: "SYNC_STATE", target, payload });
+          }
+        });
     }
   }, [state, isConnected, sendMessage, hostToken]);
 
@@ -187,15 +211,12 @@ export default function Host() {
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
         <div className="text-white text-center">
           <h1 className="text-2xl font-bold mb-4">Invalid Host Session</h1>
-          <p className="text-gray-400">
-            Please create a new room from the lobby.
-          </p>
+          <p className="text-gray-400">Please create a new room from the lobby.</p>
         </div>
       </div>
     );
   }
 
-  // Show loading state while waiting for recovery decision
   if (!state) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -206,70 +227,33 @@ export default function Host() {
             {recoveryState.status === "failed" && "Recovery failed, starting fresh..."}
           </h1>
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto"></div>
-          {recoveryState.status === "requesting" && (
-            <p className="text-gray-400 mt-4">
-              Requesting state from connected players...
-            </p>
-          )}
         </div>
       </div>
     );
   }
 
+  // Phase-specific UI lands in step 6 (per-phase host components + ReactionParticles).
+  const phaseLabel = state.value.toString();
+  const playerCount = Object.keys(state.context.players).length;
+
   return (
     <HostLayout
       roomCode={code!}
       isConnected={isConnected}
-      phase={state.value.toString()}
+      phase={phaseLabel}
       timer={state.context.timer}
     >
-      {state.matches("lobby") && <LobbyPhase players={state.context.players} />}
-      {state.matches("tutorial") && <TutorialPhase />}
-      {state.matches("topicSelection") && (
-        <TopicSelectionPhase
-          players={state.context.players}
-          selectedArticles={state.context.selectedArticles}
-          researchRoundIndex={state.context.researchRoundIndex}
-          totalRounds={state.context.config.articlesPerPlayer}
-        />
-      )}
-      {state.matches("writing") && (
-        <WritingPhase
-          players={state.context.players}
-          selectedArticles={state.context.selectedArticles}
-          researchRoundIndex={state.context.researchRoundIndex}
-          totalRounds={state.context.config.articlesPerPlayer}
-        />
-      )}
-      {state.matches("guessing") && (
-        <GuessingPhase
-          players={state.context.players}
-          currentRound={state.context.rounds[state.context.currentRoundIndex]}
-          expertReady={state.context.expertReady}
-        />
-      )}
-      {state.matches("presenting") && (
-        <PresentingPhase
-          players={state.context.players}
-          currentRound={state.context.rounds[state.context.currentRoundIndex]}
-        />
-      )}
-      {state.matches("voting") && (
-        <VotingPhase
-          players={state.context.players}
-          currentRound={state.context.rounds[state.context.currentRoundIndex]}
-          expertReady={state.context.expertReady}
-        />
-      )}
-      {state.matches("reveal") && (
-        <RevealPhase
-          players={state.context.players}
-          currentRound={state.context.rounds[state.context.currentRoundIndex]}
-        />
-      )}
-      {state.matches("leaderboard") && (
-        <LeaderboardPhase players={state.context.players} />
-      )}
+      <div className="text-white p-8 space-y-2">
+        <h2 className="text-3xl font-bold">Phase: {phaseLabel}</h2>
+        <p className="text-gray-400">Players: {playerCount}</p>
+        <p className="text-gray-400">Round: {state.context.currentRoundIndex + 1} / 2</p>
+        <p className="text-gray-400">
+          Pair: {state.context.currentPairIndex + 1}
+        </p>
+        <p className="text-gray-500 text-sm">
+          (Host phase components arrive in step 6.)
+        </p>
+      </div>
     </HostLayout>
   );
 }

@@ -1,28 +1,23 @@
 import { useParams } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useWebSocket } from "../hooks/useWebSocket";
-import type { PlayerViewState } from "@defense/shared";
+import type {
+  DebateSide,
+  PlayerViewState,
+  Reaction,
+  ReactionBurstPayload,
+} from "@defense/shared";
 import PlayerLayout from "../components/player/PlayerLayout";
 import LoadingState from "../components/shared/LoadingState";
-import LobbyPhase from "../components/player/phases/LobbyPhase";
-import TutorialPhase from "../components/player/phases/TutorialPhase";
-import TopicSelectionPhase from "../components/player/phases/TopicSelectionPhase";
-import WritingPhase from "../components/player/phases/WritingPhase";
-import GuessingPhase from "../components/player/phases/GuessingPhase";
-import PresentingPhase from "../components/player/phases/PresentingPhase";
-import VotingPhase from "../components/player/phases/VotingPhase";
-import RevealPhase from "../components/player/phases/RevealPhase";
-import LeaderboardPhase from "../components/player/phases/LeaderboardPhase";
 
 export default function Player() {
   const { code } = useParams<{ code: string }>();
 
   const [gameState, setGameState] = useState<PlayerViewState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [hasRerolled, setHasRerolled] = useState(false);
-  const [encryptedHostState, setEncryptedHostState] = useState<string | null>(null);
+  const encryptedHostStateRef = useRef<string | null>(null);
+  const [, setReactionBursts] = useState<ReactionBurstPayload[]>([]);
 
-  // Check for existing session
   const existingPlayerName = sessionStorage.getItem(`player_name`);
   const existingPlayerId = sessionStorage.getItem(`player_id_${code}`);
   const existingToken = sessionStorage.getItem(`player_token_${code}`);
@@ -34,71 +29,99 @@ export default function Player() {
     token: existingToken || undefined,
     onMessage: (message) => {
       const payload = message.payload as Record<string, unknown>;
+
       if (message.type === "ROOM_JOINED") {
         sessionStorage.setItem(`player_id_${code}`, payload.playerId as string);
         sessionStorage.setItem(
           `player_token_${code}`,
           payload.reconnectToken as string,
         );
-      } else if (message.type === "SYNC_STATE") {
-        const statePayload = payload as unknown as PlayerViewState & { encryptedHostState?: string };
+        // ROOM_JOINED also includes a state snapshot in `state`
+        const state = (payload as { state?: PlayerViewState }).state;
+        if (state) setGameState(state);
+        return;
+      }
+
+      if (message.type === "SYNC_STATE") {
+        const statePayload = payload as unknown as PlayerViewState & {
+          encryptedHostState?: string;
+        };
         setGameState(statePayload);
-        // Store encrypted host state for recovery
         if (statePayload.encryptedHostState) {
-          setEncryptedHostState(statePayload.encryptedHostState);
+          encryptedHostStateRef.current = statePayload.encryptedHostState;
         }
-      } else if (message.type === "REQUEST_STATE_RECOVERY") {
-        // Host is requesting state recovery - send our stored encrypted state
-        if (encryptedHostState) {
+        return;
+      }
+
+      if (message.type === "REQUEST_STATE_RECOVERY") {
+        if (encryptedHostStateRef.current) {
           console.log("Providing state recovery to host");
           sendMessage({
             type: "PROVIDE_STATE_RECOVERY",
             target: "HOST",
-            payload: { encryptedHostState },
+            payload: { encryptedHostState: encryptedHostStateRef.current },
           });
         }
-      } else if (message.type === "ERROR") {
+        return;
+      }
+
+      if (message.type === "REACTION_BURST") {
+        const burst = payload as unknown as ReactionBurstPayload;
+        setReactionBursts((prev) => [...prev.slice(-50), burst]);
+        return;
+      }
+
+      if (message.type === "ERROR") {
         setError(payload.message as string);
+        return;
       }
     },
   });
 
-  // Reset reroll state when phase changes to TOPIC_SELECTION
-  useEffect(() => {
-    if (gameState?.phase === "TOPIC_SELECTION") {
-      setHasRerolled(false);
-    }
-  }, [gameState?.phase]);
-
-  // Message handlers
-  const handleReroll = () => {
-    sendMessage({ type: "REROLL_ARTICLES", target: "HOST", payload: {} });
-    setHasRerolled(true);
-  };
-
-  const handleChooseArticle = (articleId: string) => {
+  // === Action dispatch helpers (used by phase components in step 6) ===
+  const handleStartGame = () =>
+    sendMessage({ type: "START_GAME", target: "HOST", payload: {} });
+  const handleNextPhase = () =>
+    sendMessage({ type: "NEXT_PHASE", target: "HOST", payload: {} });
+  const handleSubmitSubject = (subjectId: string) =>
     sendMessage({
-      type: "CHOOSE_ARTICLE",
+      type: "SUBMIT_SUBJECT",
       target: "HOST",
-      payload: { articleId },
+      payload: { subjectId },
     });
-  };
-
-  const handleStartGame = () => {
+  const handleSubmitPredicate = (predicateId: string) =>
     sendMessage({
-      type: "START_GAME",
+      type: "SUBMIT_PREDICATE",
       target: "HOST",
-      payload: {},
+      payload: { predicateId },
     });
-  };
-
-  const handleContinue = () => {
+  const handleSubmitQuestion = (text: string) =>
     sendMessage({
-      type: "NEXT_PHASE",
+      type: "SUBMIT_QUESTION",
       target: "HOST",
-      payload: {},
+      payload: { text },
     });
-  };
+  const handleSubmitVerdict = (side: DebateSide) =>
+    sendMessage({
+      type: "SUBMIT_VERDICT",
+      target: "HOST",
+      payload: { side },
+    });
+  const handleSendReaction = (reaction: Reaction) =>
+    sendMessage({
+      type: "SEND_REACTION",
+      target: "HOST",
+      payload: { reaction },
+    });
+
+  // Suppress unused-handler errors until step 6 wires them up.
+  void handleStartGame;
+  void handleNextPhase;
+  void handleSubmitSubject;
+  void handleSubmitPredicate;
+  void handleSubmitQuestion;
+  void handleSubmitVerdict;
+  void handleSendReaction;
 
   return (
     <PlayerLayout
@@ -111,104 +134,16 @@ export default function Player() {
       {!gameState ? (
         <LoadingState message="Waiting for host..." />
       ) : (
-        <>
-          {gameState.phase === "LOBBY" && (
-            <LobbyPhase
-              players={gameState.players}
-              playerId={gameState.playerId}
-              onStartGame={handleStartGame}
-            />
-          )}
-          {gameState.phase === "TUTORIAL" && (
-            <TutorialPhase
-              players={gameState.players}
-              playerId={gameState.playerId}
-              onContinue={handleContinue}
-            />
-          )}
-          {gameState.phase === "TOPIC_SELECTION" && (
-            <TopicSelectionPhase
-              articleOptions={gameState.articleOptions || []}
-              hasSubmitted={gameState.hasSubmittedChoice || false}
-              hasRerolled={hasRerolled}
-              onChooseArticle={handleChooseArticle}
-              onReroll={handleReroll}
-            />
-          )}
-          {gameState.phase === "WRITING" && (
-            <WritingPhase
-              currentArticle={gameState.currentArticle}
-              hasSubmitted={gameState.hasSubmittedSummary || false}
-              onSubmitSummary={(summary) =>
-                sendMessage({
-                  type: "SUBMIT_SUMMARY",
-                  target: "HOST",
-                  payload: { articleId: gameState.currentArticle?.id, summary },
-                })
-              }
-            />
-          )}
-          {gameState.phase === "GUESSING" && (
-            <GuessingPhase
-              articleTitle={gameState.articleTitle}
-              currentArticle={gameState.currentArticle}
-              isExpert={gameState.isExpert || false}
-              hasSubmitted={gameState.hasSubmittedLie || false}
-              onSubmitLie={(text) =>
-                sendMessage({
-                  type: "SUBMIT_LIE",
-                  target: "HOST",
-                  payload: { text },
-                })
-              }
-            />
-          )}
-          {gameState.phase === "PRESENTING" && (
-            <PresentingPhase
-              isExpert={gameState.isExpert || false}
-              isVIP={gameState.players[gameState.playerId]?.isVip || false}
-              currentArticle={gameState.currentArticle}
-              mySubmission={gameState.mySubmission}
-              onContinue={handleContinue}
-            />
-          )}
-          {gameState.phase === "VOTING" && (
-            <VotingPhase
-              playerId={gameState.playerId}
-              players={gameState.players}
-              isExpert={gameState.isExpert || false}
-              answers={gameState.answers || []}
-              hasVoted={gameState.hasVoted || false}
-              markedTrue={gameState.markedTrue}
-              onVote={(answerId) =>
-                sendMessage({
-                  type: "SUBMIT_VOTE",
-                  target: "HOST",
-                  payload: { answerId },
-                })
-              }
-              onMarkTrue={(playerId) =>
-                sendMessage({
-                  type: "MARK_TRUE",
-                  target: "HOST",
-                  payload: { playerId },
-                })
-              }
-            />
-          )}
-          {gameState.phase === "REVEAL" && (
-            <RevealPhase
-              isVIP={gameState.players[gameState.playerId]?.isVip || false}
-              onContinue={handleContinue}
-            />
-          )}
-          {gameState.phase === "LEADERBOARD" && (
-            <LeaderboardPhase
-              playerId={gameState.playerId}
-              players={gameState.players}
-            />
-          )}
-        </>
+        <div className="text-white p-8 space-y-2">
+          <h2 className="text-2xl font-bold">Phase: {gameState.phase}</h2>
+          <p className="text-gray-400">Role: {gameState.role}</p>
+          <p className="text-gray-400">
+            Round: {gameState.currentRoundNumber ?? "—"}
+          </p>
+          <p className="text-gray-500 text-sm">
+            (Player phase components arrive in step 6.)
+          </p>
+        </div>
       )}
     </PlayerLayout>
   );
