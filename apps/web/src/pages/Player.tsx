@@ -89,6 +89,18 @@ export default function Player() {
       sendMessage({ type: "START_GAME", target: "HOST", payload: {} }),
     nextPhase: () =>
       sendMessage({ type: "NEXT_PHASE", target: "HOST", payload: {} }),
+    submitAuthoredSubject: (text: string) =>
+      sendMessage({
+        type: "SUBMIT_AUTHORED_SUBJECT",
+        target: "HOST",
+        payload: { text },
+      }),
+    submitAuthoredPredicate: (text: string) =>
+      sendMessage({
+        type: "SUBMIT_AUTHORED_PREDICATE",
+        target: "HOST",
+        payload: { text },
+      }),
     submitSubject: (subjectId: string) =>
       sendMessage({
         type: "SUBMIT_SUBJECT",

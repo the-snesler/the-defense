@@ -7,6 +7,8 @@ import type {
 export interface PlayerPhaseActions {
   startGame(): void;
   nextPhase(): void;
+  submitAuthoredSubject(text: string): void;
+  submitAuthoredPredicate(text: string): void;
   submitSubject(id: string): void;
   submitPredicate(id: string): void;
   submitQuestion(text: string): void;

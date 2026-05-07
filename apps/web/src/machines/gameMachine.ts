@@ -1,7 +1,7 @@
 import { setup, assign, and } from "xstate";
 import {
-  PREDICATES,
-  SUBJECTS,
+  FALLBACK_SUBJECT_TEXTS,
+  FALLBACK_PREDICATE_TEXTS,
   FALLBACK_QUESTIONS,
   renderClaim,
 } from "@defense/shared";
@@ -15,7 +15,9 @@ import type {
   Predicate,
   RoomConfig,
   Round,
+  RoundContent,
   Subject,
+  WriterRole,
 } from "@defense/shared";
 
 // === Helpers ===
@@ -114,6 +116,10 @@ function replacePair(
   });
 }
 
+function emptyRoundContent(): RoundContent {
+  return { subjects: [], predicates: [], writerAssignments: {} };
+}
+
 // === Context ===
 
 interface GameContext {
@@ -125,6 +131,9 @@ interface GameContext {
   rounds: Round[]; // length 0 until pairing; then length 2
   currentRoundIndex: number;
   currentPairIndex: number;
+
+  // Replaced fresh at every WRITING entry.
+  roundContent: RoundContent;
 
   claimOffers: ClaimGenerationOffers;
 
@@ -144,6 +153,8 @@ type GameEvent =
   | { type: "HOST_CONNECTED"; players: { id: string; name: string }[] }
   | { type: "START_GAME"; senderId: string }
   | { type: "NEXT_PHASE"; senderId: string }
+  | { type: "SUBMIT_AUTHORED_SUBJECT"; senderId: string; text: string }
+  | { type: "SUBMIT_AUTHORED_PREDICATE"; senderId: string; text: string }
   | { type: "SUBMIT_SUBJECT"; senderId: string; subjectId: string }
   | { type: "SUBMIT_PREDICATE"; senderId: string; predicateId: string }
   | { type: "SUBMIT_QUESTION"; senderId: string; text: string }
@@ -229,20 +240,134 @@ export const gameMachine = setup({
       };
     }),
 
+    // Random half-and-half split of currently-connected players. With an even
+    // count the split is exact; the START_GAME guard requires even, so we
+    // don't need to worry about leftovers here. Resets the round's authored
+    // pools so R2 starts fresh.
+    assignWriters: assign(({ context }) => {
+      const connectedIds = Object.values(context.players)
+        .filter((p) => p.isConnected)
+        .map((p) => p.id);
+      const shuffled = shuffle(connectedIds);
+      const half = Math.floor(shuffled.length / 2);
+      const writerAssignments: Record<string, WriterRole> = {};
+      for (let i = 0; i < shuffled.length; i++) {
+        writerAssignments[shuffled[i]] = i < half ? "SUBJECT" : "PREDICATE";
+      }
+      return {
+        roundContent: {
+          subjects: [],
+          predicates: [],
+          writerAssignments,
+        } as RoundContent,
+      };
+    }),
+
+    recordAuthoredSubject: assign({
+      roundContent: ({ context, event }) => {
+        if (event.type !== "SUBMIT_AUTHORED_SUBJECT") return context.roundContent;
+        if (context.roundContent.writerAssignments[event.senderId] !== "SUBJECT") {
+          return context.roundContent;
+        }
+        const text = event.text.trim();
+        if (text.length === 0) return context.roundContent;
+        if (text.length > context.config.maxAuthoredLength) return context.roundContent;
+        const entry: Subject = {
+          id: uid("subj"),
+          text,
+          authorId: event.senderId,
+          isFallback: false,
+        };
+        return {
+          ...context.roundContent,
+          subjects: [...context.roundContent.subjects, entry],
+        };
+      },
+    }),
+
+    recordAuthoredPredicate: assign({
+      roundContent: ({ context, event }) => {
+        if (event.type !== "SUBMIT_AUTHORED_PREDICATE") return context.roundContent;
+        if (context.roundContent.writerAssignments[event.senderId] !== "PREDICATE") {
+          return context.roundContent;
+        }
+        const text = event.text.trim();
+        if (text.length === 0) return context.roundContent;
+        if (text.length > context.config.maxAuthoredLength) return context.roundContent;
+        const entry: Predicate = {
+          id: uid("pred"),
+          text,
+          authorId: event.senderId,
+          isFallback: false,
+        };
+        return {
+          ...context.roundContent,
+          predicates: [...context.roundContent.predicates, entry],
+        };
+      },
+    }),
+
+    // Run on claimGeneration entry, before drawClaimOffers. If the room
+    // didn't write enough on either side to fill 3 distinct options per
+    // pair, top up from the curated fallback list.
+    topUpRoundContent: assign({
+      roundContent: ({ context }) => {
+        const need = context.config.claimOptionsPerSide;
+        let { subjects, predicates } = context.roundContent;
+        if (subjects.length < need) {
+          const existingTexts = new Set(
+            subjects.map((s) => s.text.toLowerCase()),
+          );
+          const candidates = shuffle(FALLBACK_SUBJECT_TEXTS).filter(
+            (t) => !existingTexts.has(t.toLowerCase()),
+          );
+          const additions: Subject[] = [];
+          for (const text of candidates) {
+            if (subjects.length + additions.length >= need) break;
+            additions.push({
+              id: uid("subj_fb"),
+              text,
+              authorId: "SYSTEM",
+              isFallback: true,
+            });
+          }
+          subjects = [...subjects, ...additions];
+        }
+        if (predicates.length < need) {
+          const existingTexts = new Set(
+            predicates.map((p) => p.text.toLowerCase()),
+          );
+          const candidates = shuffle(FALLBACK_PREDICATE_TEXTS).filter(
+            (t) => !existingTexts.has(t.toLowerCase()),
+          );
+          const additions: Predicate[] = [];
+          for (const text of candidates) {
+            if (predicates.length + additions.length >= need) break;
+            additions.push({
+              id: uid("pred_fb"),
+              text,
+              authorId: "SYSTEM",
+              isFallback: true,
+            });
+          }
+          predicates = [...predicates, ...additions];
+        }
+        return { ...context.roundContent, subjects, predicates };
+      },
+    }),
+
     drawClaimOffers: assign({
       claimOffers: ({ context }) => {
         const round = context.rounds[context.currentRoundIndex];
         if (!round) return context.claimOffers;
         const subjectsByPairId: Record<string, Subject[]> = {};
         const predicatesByPairId: Record<string, Predicate[]> = {};
+        const n = context.config.claimOptionsPerSide;
         for (const pair of round.pairs) {
-          subjectsByPairId[pair.id] = pickN(
-            SUBJECTS,
-            context.config.subjectsPerPlayer,
-          );
+          subjectsByPairId[pair.id] = pickN(context.roundContent.subjects, n);
           predicatesByPairId[pair.id] = pickN(
-            PREDICATES,
-            context.config.predicatesPerPlayer,
+            context.roundContent.predicates,
+            n,
           );
         }
         return { subjectsByPairId, predicatesByPairId };
@@ -489,6 +614,9 @@ export const gameMachine = setup({
     setPairingTimer: assign({
       timer: ({ context }) => context.config.pairingDisplaySeconds,
     }),
+    setWritingTimer: assign({
+      timer: ({ context }) => context.config.writingSeconds,
+    }),
     setClaimGenerationTimer: assign({
       timer: ({ context }) => context.config.claimGenerationSeconds,
     }),
@@ -583,13 +711,14 @@ export const gameMachine = setup({
       crossExamResponseSeconds: 30,
       verdictSeconds: 20,
       transitionSeconds: 4,
+      writingSeconds: 60,
       claimGenerationSeconds: 20,
       pairingDisplaySeconds: 8,
       roundBreakSeconds: 8,
       round1Pot: 1000,
       round2Pot: 2000,
-      subjectsPerPlayer: 3,
-      predicatesPerPlayer: 3,
+      claimOptionsPerSide: 3,
+      maxAuthoredLength: 100,
       minQuestionsBeforeFallback: 2,
     },
     players: {},
@@ -597,6 +726,7 @@ export const gameMachine = setup({
     rounds: [],
     currentRoundIndex: 0,
     currentPairIndex: 0,
+    roundContent: emptyRoundContent(),
     claimOffers: { subjectsByPairId: {}, predicatesByPairId: {} },
     audienceQuestionsForCurrentPair: [],
     crossExamAssignments: { q1: null, q2: null },
@@ -627,13 +757,23 @@ export const gameMachine = setup({
       entry: ["computePairings", "setPairingTimer"],
       on: {
         TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: "writing",
+        NEXT_PHASE: { target: "writing", guard: "senderIsVIP" },
+      },
+    },
+
+    writing: {
+      entry: ["assignWriters", "setWritingTimer"],
+      on: {
+        SUBMIT_AUTHORED_SUBJECT: { actions: "recordAuthoredSubject" },
+        SUBMIT_AUTHORED_PREDICATE: { actions: "recordAuthoredPredicate" },
+        TIMER_TICK: { actions: "tickTimer" },
         TIMER_END: "claimGeneration",
-        NEXT_PHASE: { target: "claimGeneration", guard: "senderIsVIP" },
       },
     },
 
     claimGeneration: {
-      entry: ["drawClaimOffers", "setClaimGenerationTimer"],
+      entry: ["topUpRoundContent", "drawClaimOffers", "setClaimGenerationTimer"],
       on: {
         SUBMIT_SUBJECT: { actions: "recordSubject" },
         SUBMIT_PREDICATE: { actions: "recordPredicate" },
@@ -719,7 +859,7 @@ export const gameMachine = setup({
       entry: "setRoundBreakTimer",
       on: {
         TIMER_TICK: { actions: "tickTimer" },
-        TIMER_END: "claimGeneration",
+        TIMER_END: "writing",
       },
     },
 

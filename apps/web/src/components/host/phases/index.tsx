@@ -2,6 +2,7 @@ import type { HostPhaseProps } from "./types";
 import LobbyPhase from "./LobbyPhase";
 import TutorialPhase from "./TutorialPhase";
 import PairingPhase from "./PairingPhase";
+import WritingPhase from "./WritingPhase";
 import ClaimGenerationPhase from "./ClaimGenerationPhase";
 import RevealPhase from "./RevealPhase";
 import PrepPhase from "./PrepPhase";
@@ -23,6 +24,8 @@ export default function HostPhaseRouter({ state }: HostPhaseProps) {
       return <TutorialPhase state={state} />;
     case "pairing":
       return <PairingPhase state={state} />;
+    case "writing":
+      return <WritingPhase state={state} />;
     case "claimGeneration":
       return <ClaimGenerationPhase state={state} />;
     case "reveal":

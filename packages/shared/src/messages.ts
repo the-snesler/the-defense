@@ -99,6 +99,22 @@ export type SubmitPredicatePayload = z.infer<
   typeof SubmitPredicatePayloadSchema
 >;
 
+// === WRITING phase: open-ended player submissions ===
+
+export const SubmitAuthoredSubjectPayloadSchema = z.object({
+  text: z.string().min(1).max(100),
+});
+export type SubmitAuthoredSubjectPayload = z.infer<
+  typeof SubmitAuthoredSubjectPayloadSchema
+>;
+
+export const SubmitAuthoredPredicatePayloadSchema = z.object({
+  text: z.string().min(1).max(100),
+});
+export type SubmitAuthoredPredicatePayload = z.infer<
+  typeof SubmitAuthoredPredicatePayloadSchema
+>;
+
 export const SubmitQuestionPayloadSchema = z.object({
   text: z.string().min(1).max(140),
 });
@@ -169,6 +185,8 @@ export const MessageTypes = {
   // Player -> Host
   START_GAME: "START_GAME",
   NEXT_PHASE: "NEXT_PHASE",
+  SUBMIT_AUTHORED_SUBJECT: "SUBMIT_AUTHORED_SUBJECT",
+  SUBMIT_AUTHORED_PREDICATE: "SUBMIT_AUTHORED_PREDICATE",
   SUBMIT_SUBJECT: "SUBMIT_SUBJECT",
   SUBMIT_PREDICATE: "SUBMIT_PREDICATE",
   SUBMIT_QUESTION: "SUBMIT_QUESTION",

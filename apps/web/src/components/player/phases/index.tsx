@@ -2,6 +2,7 @@ import type { PlayerPhaseProps } from "./types";
 import LobbyPhase from "./LobbyPhase";
 import TutorialPhase from "./TutorialPhase";
 import PairingPhase from "./PairingPhase";
+import WritingPhase from "./WritingPhase";
 import ClaimGenerationPhase from "./ClaimGenerationPhase";
 import RevealPhase from "./RevealPhase";
 import PrepPhase from "./PrepPhase";
@@ -27,6 +28,8 @@ export default function PlayerPhaseRouter({
       return <TutorialPhase view={view} actions={actions} />;
     case "PAIRING":
       return <PairingPhase view={view} actions={actions} />;
+    case "WRITING":
+      return <WritingPhase view={view} actions={actions} />;
     case "CLAIM_GENERATION":
       return <ClaimGenerationPhase view={view} actions={actions} />;
     case "REVEAL":

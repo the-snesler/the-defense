@@ -204,17 +204,20 @@ The "host" is a desktop browser displayed on a TV/projector. It shows the curren
 - Host displays rules and a quick example claim + mock debate (pre-written, ~30 seconds)
 - Player phones show a condensed version of the rules
 
+## Writing phase
+- All players get 60 seconds to write either subjects or predicates (randomly assigned, 50/50 split). They can write as many as they want within the time limit. These are saved to the server and become the pool for claim generation in the next phases.
+
 ## Pairing phase
 - System assigns pairs for Round 1 (random). Pairings for Round 2 are also pre-determined at this point using a round-robin rotation so no matchups repeat.
 - All pairs are shown on host screen briefly before moving into claim generation
 
 ## Claim generation phase (parallel across all pairs)
-- For each pair, Player A is shown 3 random **subjects** drawn from a curated pool (e.g., "Shrek", "my landlord", "the state of Wisconsin", "a surprisingly ambitious raccoon"). Player A picks one.
+- For each pair, Player A is shown 3 random **subjects** drawn from the written pool (e.g., "Shrek", "my landlord", "the state of Wisconsin", "a surprisingly ambitious raccoon"). Player A picks one.
 - Simultaneously, Player B is shown 3 random **predicates** from a separate pool (e.g., "invented jazz", "is legally considered a vegetable", "was the original lead singer of Nickelback"). Player B picks one.
 - Neither player sees what the other picked. Both see a "waiting for your opponent..." screen after choosing.
 - This happens for all pairs at once, so this phase takes ~20 seconds regardless of pair count.
 
-## Debate rounds (sequential per pair, happens twice — Round 1 and Round 2)
+## Debate rounds (sequential per pair, happens twice — Round 1, another writing round, Round 2)
 
 For each pair in the current round:
 
@@ -261,7 +264,5 @@ For each pair in the current round:
 **Audience is tiny.** With 4-6 players total, only 2-4 people are voting on any given debate and question submissions might be sparse. System has a fallback pool of pre-written "prosecution questions" (e.g., "Can you provide a witness?", "How do you explain [random contradictory fact]?") that auto-populate if fewer than 2 audience questions are submitted by the end of opening statements.
 
 **FOR/AGAINST asymmetry.** FOR is inherently funnier and harder — you're defending the indefensible, which is where the improv commitment lives. AGAINST can just be reasonable, which is boring. Two options: (a) Lean into it and treat FOR as the "star role" — AGAINST's job is to be the straight man who sets up FOR's ridiculous justifications (this is actually a natural improv dynamic: the grounded character makes the absurd character funnier). (b) Force AGAINST to commit to a specific counter-theory rather than just denying ("Shrek DIDN'T invent jazz — jazz was invented by a sentient trumpet in 1843"). I'd go with (a) for simplicity and note it in the tutorial: "AGAINST: your job is to poke holes. FOR: your job is to fill them with something worse."
-
-**Claims that don't make grammatical sense.** Combining random subjects + predicates will occasionally produce duds ("a surprisingly ambitious raccoon is legally considered a vegetable" works fine, but some combos might be grammatically broken or boring). Solutions: tag subjects as person/place/thing and predicates as requiring person/place/thing, so they're at least grammatically compatible. Keep both pools hand-curated rather than procedurally generated — a pool of ~30 subjects and ~30 predicates gives 900 unique claims, which is way more than enough.
 
 **Dead time during other pairs' debates.** Non-debating players need something to do. They're submitting questions and voting, which helps, but between those moments they're passive. Consider: a live "reaction area" on the host screen — audience phones have a simple tap-to-react button (😂 or 🔥) that creates a particle effect of the corresponding emoji on the host, like livestreams on phones.

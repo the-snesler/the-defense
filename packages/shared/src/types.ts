@@ -6,6 +6,7 @@ export const GamePhaseSchema = z.enum([
   "LOBBY",
   "TUTORIAL",
   "PAIRING",
+  "WRITING",
   "CLAIM_GENERATION",
   "REVEAL",
   "PREP",
@@ -39,27 +40,22 @@ export const ReactionSchema = z.enum(["LAUGH", "FIRE"]);
 export type Reaction = z.infer<typeof ReactionSchema>;
 
 // === Subjects, predicates, claims ===
-export const SubjectCategorySchema = z.enum([
-  "PERSON",
-  "PLACE",
-  "THING",
-  "GROUP",
-]);
-export type SubjectCategory = z.infer<typeof SubjectCategorySchema>;
-
+// Both are player-authored during the WRITING phase. authorId is the
+// playerId of the writer, or "SYSTEM" for fallback entries pulled from
+// the curated JSON list when the room's submissions don't fill the pool.
 export const SubjectSchema = z.object({
   id: z.string(),
   text: z.string(),
-  category: SubjectCategorySchema,
-  isPlural: z.boolean().default(false),
+  authorId: z.string(),
+  isFallback: z.boolean().default(false),
 });
 export type Subject = z.infer<typeof SubjectSchema>;
 
 export const PredicateSchema = z.object({
   id: z.string(),
   text: z.string(),
-  pluralText: z.string().optional(),
-  acceptsCategories: z.array(SubjectCategorySchema),
+  authorId: z.string(),
+  isFallback: z.boolean().default(false),
 });
 export type Predicate = z.infer<typeof PredicateSchema>;
 
@@ -69,6 +65,10 @@ export const ClaimSchema = z.object({
   text: z.string(),
 });
 export type Claim = z.infer<typeof ClaimSchema>;
+
+// === Writer assignment (WRITING phase) ===
+export const WriterRoleSchema = z.enum(["SUBJECT", "PREDICATE"]);
+export type WriterRole = z.infer<typeof WriterRoleSchema>;
 
 // === Pair / Round ===
 export const PairSchema = z.object({
@@ -115,11 +115,23 @@ export type CrossExamAssignment = z.infer<typeof CrossExamAssignmentSchema>;
 
 // === Claim generation offers ===
 // Per pair: 3 subjects offered to playerA, 3 predicates offered to playerB.
+// Sampled from roundContent (player-authored pool + fallback top-up).
 export const ClaimGenerationOffersSchema = z.object({
   subjectsByPairId: z.record(z.string(), z.array(SubjectSchema)),
   predicatesByPairId: z.record(z.string(), z.array(PredicateSchema)),
 });
 export type ClaimGenerationOffers = z.infer<typeof ClaimGenerationOffersSchema>;
+
+// === Round content (per-round writing-phase output) ===
+// Replaced fresh at the start of every WRITING phase. Players assigned
+// SUBJECT contribute to subjects; PREDICATE writers contribute to predicates.
+// Each pair's claim-generation offers are sampled from these pools.
+export const RoundContentSchema = z.object({
+  subjects: z.array(SubjectSchema),
+  predicates: z.array(PredicateSchema),
+  writerAssignments: z.record(z.string(), WriterRoleSchema),
+});
+export type RoundContent = z.infer<typeof RoundContentSchema>;
 
 // === Room config ===
 export const RoomConfigSchema = z.object({
@@ -132,6 +144,7 @@ export const RoomConfigSchema = z.object({
   crossExamResponseSeconds: z.number().default(30),
   verdictSeconds: z.number().default(20),
   transitionSeconds: z.number().default(4),
+  writingSeconds: z.number().default(60),
   claimGenerationSeconds: z.number().default(20),
   pairingDisplaySeconds: z.number().default(8),
   roundBreakSeconds: z.number().default(8),
@@ -139,8 +152,12 @@ export const RoomConfigSchema = z.object({
   round1Pot: z.number().default(1000),
   round2Pot: z.number().default(2000),
   // Content
-  subjectsPerPlayer: z.number().default(3),
-  predicatesPerPlayer: z.number().default(3),
+  // How many subject/predicate options each debater picks from. The
+  // round-content pool is topped up from fallback JSON if it can't supply
+  // this many of either side.
+  claimOptionsPerSide: z.number().default(3),
+  // Max characters for an authored subject/predicate.
+  maxAuthoredLength: z.number().default(100),
   // Fallback question pool kicks in if real audience submissions < this.
   minQuestionsBeforeFallback: z.number().default(2),
 });
@@ -159,6 +176,9 @@ export const GameStateSchema = z.object({
   rounds: z.array(RoundSchema),
   currentRoundIndex: z.number(),
   currentPairIndex: z.number(),
+
+  // Replaced fresh at each WRITING phase entry (R1 and R2).
+  roundContent: RoundContentSchema,
 
   claimOffers: ClaimGenerationOffersSchema,
 
@@ -208,6 +228,13 @@ export const PlayerViewStateSchema = z.object({
   myPairPartnerId: z.string().nullable(),
   // Shown briefly during ROUND_BREAK.
   myUpcomingRound2PartnerId: z.string().nullable(),
+
+  // === Writing phase ===
+  // Null outside WRITING, or for any player with no assignment (shouldn't
+  // happen at run-time since every connected player is assigned).
+  writerRole: WriterRoleSchema.nullable(),
+  // How many entries this player has submitted in the current WRITING phase.
+  myAuthoredCount: z.number().optional(),
 
   // === Claim generation (only this player's pair's offers) ===
   subjectOptions: z.array(SubjectSchema).optional(),

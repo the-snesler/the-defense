@@ -15,6 +15,7 @@ const STATE_TO_PHASE: Record<string, GamePhase> = {
   lobby: "LOBBY",
   tutorial: "TUTORIAL",
   pairing: "PAIRING",
+  writing: "WRITING",
   claimGeneration: "CLAIM_GENERATION",
   reveal: "REVEAL",
   prep: "PREP",
@@ -133,6 +134,26 @@ export function machineStateToPlayerViewState(
   const myUpcomingRound2PartnerId = myR2Pair
     ? partnerOf(myR2Pair.pair, playerId)
     : null;
+
+  // === writing phase ===
+  // writerRole comes straight from the round-content assignments. It only
+  // exists during WRITING (and is null otherwise so the player UI doesn't
+  // try to show the writing form).
+  let writerRole: PlayerViewState["writerRole"] = null;
+  let myAuthoredCount: number | undefined;
+  if (phase === "WRITING") {
+    writerRole =
+      ctx.roundContent.writerAssignments[playerId] ?? null;
+    if (writerRole === "SUBJECT") {
+      myAuthoredCount = ctx.roundContent.subjects.filter(
+        (s) => s.authorId === playerId,
+      ).length;
+    } else if (writerRole === "PREDICATE") {
+      myAuthoredCount = ctx.roundContent.predicates.filter(
+        (p) => p.authorId === playerId,
+      ).length;
+    }
+  }
 
   // === claim generation: only project this player's own pair offers ===
   let subjectOptions: PlayerViewState["subjectOptions"];
@@ -264,6 +285,8 @@ export function machineStateToPlayerViewState(
     myPairId,
     myPairPartnerId,
     myUpcomingRound2PartnerId,
+    writerRole,
+    myAuthoredCount,
     subjectOptions,
     predicateOptions,
     hasSubmittedSubject,
