@@ -13,16 +13,21 @@ export default function TutorialPhase({ state }: HostPhaseProps) {
         </li>
         <li>The two get smashed together into a ridiculous claim.</li>
         <li>
-          One debater argues <span className="text-green-400 font-bold">FOR</span>{" "}
-          the claim, the other{" "}
-          <span className="text-red-400 font-bold">AGAINST</span>. 30 seconds
-          each.
+          One debater argues{" "}
+          <span className="text-green-400 font-bold">FOR</span> the claim, the
+          other <span className="text-red-400 font-bold">AGAINST</span>.
+        </li>
+        <li>
+          The AGAINST side has to yes-and everything their opponent just said
+          before dismantling it. You can't just say “nuh uh”.
         </li>
         <li>
           The audience submits questions during opening statements; the host
           picks two for cross-examination.
         </li>
-        <li>The audience votes for the winner. Points scale with vote share.</li>
+        <li>
+          The audience votes for the winner. Points scale with vote share.
+        </li>
         <li>Round 2 has new pairings and DOUBLE POINTS.</li>
       </ol>
       <div className="bg-gray-800 rounded p-4 text-center">

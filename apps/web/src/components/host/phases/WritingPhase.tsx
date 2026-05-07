@@ -16,10 +16,11 @@ export default function WritingPhase({ state }: HostPhaseProps) {
   return (
     <div className="text-white p-8 text-center space-y-8">
       <h1 className="text-5xl font-bold">
-        Round {currentRoundIndex + 1}: Write your weapons!
+        Round {currentRoundIndex + 1}: Write!
       </h1>
       <p className="text-gray-400 text-xl">
-        Subjects on the left, predicates on the right. Anything goes.
+        Half of the players are writing subjects, half are writing predicates.
+        Anything goes.
       </p>
 
       <div className="grid grid-cols-2 gap-8 max-w-3xl mx-auto">
@@ -31,7 +32,9 @@ export default function WritingPhase({ state }: HostPhaseProps) {
           </p>
         </div>
         <div className="bg-purple-900/30 border border-purple-500/40 rounded-lg p-6">
-          <h2 className="text-2xl font-bold text-purple-300 mb-2">Predicates</h2>
+          <h2 className="text-2xl font-bold text-purple-300 mb-2">
+            Predicates
+          </h2>
           <p className="text-5xl font-bold">{predicateCount}</p>
           <p className="text-gray-400 text-sm mt-3">
             {predicateWriters.join(", ")}
