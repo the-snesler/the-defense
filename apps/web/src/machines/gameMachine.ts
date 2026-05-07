@@ -265,13 +265,17 @@ export const gameMachine = setup({
 
     recordAuthoredSubject: assign({
       roundContent: ({ context, event }) => {
-        if (event.type !== "SUBMIT_AUTHORED_SUBJECT") return context.roundContent;
-        if (context.roundContent.writerAssignments[event.senderId] !== "SUBJECT") {
+        if (event.type !== "SUBMIT_AUTHORED_SUBJECT")
+          return context.roundContent;
+        if (
+          context.roundContent.writerAssignments[event.senderId] !== "SUBJECT"
+        ) {
           return context.roundContent;
         }
         const text = event.text.trim();
         if (text.length === 0) return context.roundContent;
-        if (text.length > context.config.maxAuthoredLength) return context.roundContent;
+        if (text.length > context.config.maxAuthoredLength)
+          return context.roundContent;
         const entry: Subject = {
           id: uid("subj"),
           text,
@@ -287,13 +291,17 @@ export const gameMachine = setup({
 
     recordAuthoredPredicate: assign({
       roundContent: ({ context, event }) => {
-        if (event.type !== "SUBMIT_AUTHORED_PREDICATE") return context.roundContent;
-        if (context.roundContent.writerAssignments[event.senderId] !== "PREDICATE") {
+        if (event.type !== "SUBMIT_AUTHORED_PREDICATE")
+          return context.roundContent;
+        if (
+          context.roundContent.writerAssignments[event.senderId] !== "PREDICATE"
+        ) {
           return context.roundContent;
         }
         const text = event.text.trim();
         if (text.length === 0) return context.roundContent;
-        if (text.length > context.config.maxAuthoredLength) return context.roundContent;
+        if (text.length > context.config.maxAuthoredLength)
+          return context.roundContent;
         const entry: Predicate = {
           id: uid("pred"),
           text,
@@ -385,7 +393,8 @@ export const gameMachine = setup({
         if (!found) return context.rounds;
         if (found.pair.playerAId !== event.senderId) return context.rounds;
         if (found.pair.chosenSubject) return context.rounds;
-        const offers = context.claimOffers.subjectsByPairId[found.pair.id] ?? [];
+        const offers =
+          context.claimOffers.subjectsByPairId[found.pair.id] ?? [];
         const subject = offers.find((s) => s.id === event.subjectId);
         if (!subject) return context.rounds;
         return replacePair(
@@ -442,7 +451,11 @@ export const gameMachine = setup({
             ...pair,
             chosenSubject: subj,
             chosenPredicate: pred,
-            claim: { subject: subj, predicate: pred, text: renderClaim(subj, pred) },
+            claim: {
+              subject: subj,
+              predicate: pred,
+              text: renderClaim(subj, pred),
+            },
             forPlayerId: aIsFor ? pair.playerAId : pair.playerBId,
             againstPlayerId: aIsFor ? pair.playerBId : pair.playerAId,
           };
@@ -511,7 +524,8 @@ export const gameMachine = setup({
         }
       }
 
-      // Pick 2 distinct questions; Q1 → FOR, Q2 → AGAINST.
+      // Pick 2 distinct questions. Both debaters argue each one — no
+      // per-debater assignment.
       const picked = shuffle(pool).slice(0, 2);
       const q1 = picked[0];
       const q2 = picked[1] ?? picked[0];
@@ -519,10 +533,8 @@ export const gameMachine = setup({
       return {
         audienceQuestionsForCurrentPair: pool,
         crossExamAssignments: {
-          q1: q1 ? { questionId: q1.id, responderId: pair.forPlayerId } : null,
-          q2: q2
-            ? { questionId: q2.id, responderId: pair.againstPlayerId }
-            : null,
+          q1: q1 ? { questionId: q1.id } : null,
+          q2: q2 ? { questionId: q2.id } : null,
         },
       };
     }),
@@ -554,12 +566,7 @@ export const gameMachine = setup({
                 ...stripped,
                 votesAgainst: [...stripped.votesAgainst, event.senderId],
               };
-        return replacePair(
-          context.rounds,
-          ri,
-          context.currentPairIndex,
-          next,
-        );
+        return replacePair(context.rounds, ri, context.currentPairIndex, next);
       },
     }),
 
@@ -592,7 +599,8 @@ export const gameMachine = setup({
       const players = { ...context.players };
       const forP = players[pair.forPlayerId];
       const againstP = players[pair.againstPlayerId];
-      if (forP) players[pair.forPlayerId] = { ...forP, score: forP.score + forPts };
+      if (forP)
+        players[pair.forPlayerId] = { ...forP, score: forP.score + forPts };
       if (againstP)
         players[pair.againstPlayerId] = {
           ...againstP,
@@ -657,8 +665,9 @@ export const gameMachine = setup({
     },
 
     enoughEvenPlayers: ({ context }) => {
-      const n = Object.values(context.players).filter((p) => p.isConnected)
-        .length;
+      const n = Object.values(context.players).filter(
+        (p) => p.isConnected,
+      ).length;
       return (
         n >= context.config.minPlayers &&
         n <= context.config.maxPlayers &&
@@ -749,15 +758,6 @@ export const gameMachine = setup({
 
     tutorial: {
       on: {
-        NEXT_PHASE: { target: "pairing", guard: "senderIsVIP" },
-      },
-    },
-
-    pairing: {
-      entry: ["computePairings", "setPairingTimer"],
-      on: {
-        TIMER_TICK: { actions: "tickTimer" },
-        TIMER_END: "writing",
         NEXT_PHASE: { target: "writing", guard: "senderIsVIP" },
       },
     },
@@ -768,12 +768,31 @@ export const gameMachine = setup({
         SUBMIT_AUTHORED_SUBJECT: { actions: "recordAuthoredSubject" },
         SUBMIT_AUTHORED_PREDICATE: { actions: "recordAuthoredPredicate" },
         TIMER_TICK: { actions: "tickTimer" },
+        // R1: pairings haven't been computed yet — go through `pairing` to
+        // both compute and display them. R2: pairings were already shown via
+        // `roundBreak`, so skip straight to claim generation.
+        TIMER_END: [
+          { target: "pairing", guard: "isFirstRound" },
+          { target: "claimGeneration" },
+        ],
+      },
+    },
+
+    pairing: {
+      entry: ["computePairings", "setPairingTimer"],
+      on: {
+        TIMER_TICK: { actions: "tickTimer" },
         TIMER_END: "claimGeneration",
+        NEXT_PHASE: { target: "claimGeneration", guard: "senderIsVIP" },
       },
     },
 
     claimGeneration: {
-      entry: ["topUpRoundContent", "drawClaimOffers", "setClaimGenerationTimer"],
+      entry: [
+        "topUpRoundContent",
+        "drawClaimOffers",
+        "setClaimGenerationTimer",
+      ],
       on: {
         SUBMIT_SUBJECT: { actions: "recordSubject" },
         SUBMIT_PREDICATE: { actions: "recordPredicate" },
@@ -848,8 +867,16 @@ export const gameMachine = setup({
       on: {
         TIMER_TICK: { actions: "tickTimer" },
         TIMER_END: [
-          { target: "reveal", guard: "hasMorePairsInRound", actions: "nextPair" },
-          { target: "roundBreak", guard: "isFirstRound", actions: "incrementRound" },
+          {
+            target: "reveal",
+            guard: "hasMorePairsInRound",
+            actions: "nextPair",
+          },
+          {
+            target: "roundBreak",
+            guard: "isFirstRound",
+            actions: "incrementRound",
+          },
           { target: "finale" },
         ],
       },

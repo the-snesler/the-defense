@@ -107,9 +107,10 @@ export const AudienceQuestionSchema = z.object({
 export type AudienceQuestion = z.infer<typeof AudienceQuestionSchema>;
 
 // === Cross-examination assignment ===
+// Each question is a shared debate point — both debaters argue it. We track
+// only the questionId; nothing is "directed at" a single player.
 export const CrossExamAssignmentSchema = z.object({
   questionId: z.string(),
-  responderId: z.string(),
 });
 export type CrossExamAssignment = z.infer<typeof CrossExamAssignmentSchema>;
 
@@ -257,7 +258,6 @@ export const PlayerViewStateSchema = z.object({
   currentCrossExamQuestion: z
     .object({
       text: z.string(),
-      responderId: z.string(),
       questionNumber: z.union([z.literal(1), z.literal(2)]),
     })
     .nullable(),

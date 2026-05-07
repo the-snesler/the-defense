@@ -212,7 +212,6 @@ export function machineStateToPlayerViewState(
       if (q) {
         currentCrossExamQuestion = {
           text: q.text,
-          responderId: assignment.responderId,
           questionNumber: which === "q1" ? 1 : 2,
         };
       }
