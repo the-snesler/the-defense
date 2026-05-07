@@ -87,6 +87,12 @@ export type StartGamePayload = z.infer<typeof StartGamePayloadSchema>;
 export const NextPhasePayloadSchema = z.object({});
 export type NextPhasePayload = z.infer<typeof NextPhasePayloadSchema>;
 
+// VIP-only debug/presenter affordance: tells the host to fire TIMER_END on
+// the current state, immediately advancing the machine. Host enforces the
+// VIP check before forwarding to the actor.
+export const SkipPhasePayloadSchema = z.object({});
+export type SkipPhasePayload = z.infer<typeof SkipPhasePayloadSchema>;
+
 export const SubmitSubjectPayloadSchema = z.object({
   subjectId: z.string(),
 });
@@ -185,6 +191,7 @@ export const MessageTypes = {
   // Player -> Host
   START_GAME: "START_GAME",
   NEXT_PHASE: "NEXT_PHASE",
+  SKIP_PHASE: "SKIP_PHASE",
   SUBMIT_AUTHORED_SUBJECT: "SUBMIT_AUTHORED_SUBJECT",
   SUBMIT_AUTHORED_PREDICATE: "SUBMIT_AUTHORED_PREDICATE",
   SUBMIT_SUBJECT: "SUBMIT_SUBJECT",

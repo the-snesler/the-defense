@@ -31,10 +31,6 @@ function shuffle<T>(arr: readonly T[]): T[] {
   return out;
 }
 
-function pickN<T>(arr: readonly T[], n: number): T[] {
-  return shuffle(arr).slice(0, n);
-}
-
 function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -118,6 +114,25 @@ function replacePair(
 
 function emptyRoundContent(): RoundContent {
   return { subjects: [], predicates: [], writerAssignments: {} };
+}
+
+// Walks every pair in every round and collects the ids of subjects/predicates
+// that have been committed as a `claim`. Used to enforce the game-wide
+// uniqueness rule: any option that was actually picked stays out of the pool
+// for the rest of the game; offered-but-rejected options return.
+function getChosenIds(rounds: Round[]): {
+  subjectIds: Set<string>;
+  predicateIds: Set<string>;
+} {
+  const subjectIds = new Set<string>();
+  const predicateIds = new Set<string>();
+  for (const r of rounds) {
+    for (const p of r.pairs) {
+      if (p.chosenSubject) subjectIds.add(p.chosenSubject.id);
+      if (p.chosenPredicate) predicateIds.add(p.chosenPredicate.id);
+    }
+  }
+  return { subjectIds, predicateIds };
 }
 
 // === Context ===
@@ -242,8 +257,12 @@ export const gameMachine = setup({
 
     // Random half-and-half split of currently-connected players. With an even
     // count the split is exact; the START_GAME guard requires even, so we
-    // don't need to worry about leftovers here. Resets the round's authored
-    // pools so R2 starts fresh.
+    // don't need to worry about leftovers here.
+    //
+    // R1 (rounds not yet computed): start with empty pools.
+    // R2: carry forward R1's pool minus the entries that became chosen
+    // claims. Game-wide uniqueness rule: chosen subjects/predicates are
+    // permanently out, but offered-but-rejected ones return for R2.
     assignWriters: assign(({ context }) => {
       const connectedIds = Object.values(context.players)
         .filter((p) => p.isConnected)
@@ -254,10 +273,27 @@ export const gameMachine = setup({
       for (let i = 0; i < shuffled.length; i++) {
         writerAssignments[shuffled[i]] = i < half ? "SUBJECT" : "PREDICATE";
       }
+
+      const isFirstRoundWriting = context.rounds.length === 0;
+      if (isFirstRoundWriting) {
+        return {
+          roundContent: {
+            subjects: [],
+            predicates: [],
+            writerAssignments,
+          } as RoundContent,
+        };
+      }
+
+      const { subjectIds, predicateIds } = getChosenIds(context.rounds);
       return {
         roundContent: {
-          subjects: [],
-          predicates: [],
+          subjects: context.roundContent.subjects.filter(
+            (s) => !subjectIds.has(s.id),
+          ),
+          predicates: context.roundContent.predicates.filter(
+            (p) => !predicateIds.has(p.id),
+          ),
           writerAssignments,
         } as RoundContent,
       };
@@ -315,14 +351,23 @@ export const gameMachine = setup({
       },
     }),
 
-    // Run on claimGeneration entry, before drawClaimOffers. If the room
-    // didn't write enough on either side to fill 3 distinct options per
-    // pair, top up from the curated fallback list.
+    // Run on claimGeneration entry, before drawClaimOffers. The pool needs
+    // enough distinct entries for every pair in the round to receive
+    // claimOptionsPerSide (default 3) without overlap. Already-chosen
+    // entries from prior rounds don't count toward availability.
     topUpRoundContent: assign({
       roundContent: ({ context }) => {
-        const need = context.config.claimOptionsPerSide;
+        const round = context.rounds[context.currentRoundIndex];
+        if (!round) return context.roundContent;
+        const target =
+          round.pairs.length * context.config.claimOptionsPerSide;
+        const { subjectIds, predicateIds } = getChosenIds(context.rounds);
+
         let { subjects, predicates } = context.roundContent;
-        if (subjects.length < need) {
+
+        const availableSubjects = subjects.filter((s) => !subjectIds.has(s.id));
+        if (availableSubjects.length < target) {
+          const deficit = target - availableSubjects.length;
           const existingTexts = new Set(
             subjects.map((s) => s.text.toLowerCase()),
           );
@@ -331,7 +376,7 @@ export const gameMachine = setup({
           );
           const additions: Subject[] = [];
           for (const text of candidates) {
-            if (subjects.length + additions.length >= need) break;
+            if (additions.length >= deficit) break;
             additions.push({
               id: uid("subj_fb"),
               text,
@@ -341,7 +386,12 @@ export const gameMachine = setup({
           }
           subjects = [...subjects, ...additions];
         }
-        if (predicates.length < need) {
+
+        const availablePredicates = predicates.filter(
+          (p) => !predicateIds.has(p.id),
+        );
+        if (availablePredicates.length < target) {
+          const deficit = target - availablePredicates.length;
           const existingTexts = new Set(
             predicates.map((p) => p.text.toLowerCase()),
           );
@@ -350,7 +400,7 @@ export const gameMachine = setup({
           );
           const additions: Predicate[] = [];
           for (const text of candidates) {
-            if (predicates.length + additions.length >= need) break;
+            if (additions.length >= deficit) break;
             additions.push({
               id: uid("pred_fb"),
               text,
@@ -360,23 +410,37 @@ export const gameMachine = setup({
           }
           predicates = [...predicates, ...additions];
         }
+
         return { ...context.roundContent, subjects, predicates };
       },
     }),
 
+    // Game-wide uniqueness: each pair's options are disjoint from every
+    // other pair's options in the same round, and never include any
+    // already-chosen subject/predicate from a prior round.
     drawClaimOffers: assign({
       claimOffers: ({ context }) => {
         const round = context.rounds[context.currentRoundIndex];
         if (!round) return context.claimOffers;
+        const { subjectIds, predicateIds } = getChosenIds(context.rounds);
+        const availableSubjects = shuffle(
+          context.roundContent.subjects.filter((s) => !subjectIds.has(s.id)),
+        );
+        const availablePredicates = shuffle(
+          context.roundContent.predicates.filter(
+            (p) => !predicateIds.has(p.id),
+          ),
+        );
+        const n = context.config.claimOptionsPerSide;
         const subjectsByPairId: Record<string, Subject[]> = {};
         const predicatesByPairId: Record<string, Predicate[]> = {};
-        const n = context.config.claimOptionsPerSide;
+        let si = 0;
+        let pi = 0;
         for (const pair of round.pairs) {
-          subjectsByPairId[pair.id] = pickN(context.roundContent.subjects, n);
-          predicatesByPairId[pair.id] = pickN(
-            context.roundContent.predicates,
-            n,
-          );
+          subjectsByPairId[pair.id] = availableSubjects.slice(si, si + n);
+          si += n;
+          predicatesByPairId[pair.id] = availablePredicates.slice(pi, pi + n);
+          pi += n;
         }
         return { subjectsByPairId, predicatesByPairId };
       },

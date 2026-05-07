@@ -89,6 +89,8 @@ export default function Player() {
       sendMessage({ type: "START_GAME", target: "HOST", payload: {} }),
     nextPhase: () =>
       sendMessage({ type: "NEXT_PHASE", target: "HOST", payload: {} }),
+    skipPhase: () =>
+      sendMessage({ type: "SKIP_PHASE", target: "HOST", payload: {} }),
     submitAuthoredSubject: (text: string) =>
       sendMessage({
         type: "SUBMIT_AUTHORED_SUBJECT",
@@ -133,6 +135,9 @@ export default function Player() {
       }),
   };
 
+  const isVip =
+    gameState?.players[gameState.playerId]?.isVip ?? false;
+
   return (
     <>
       <PlayerLayout
@@ -141,6 +146,8 @@ export default function Player() {
         phase={gameState?.phase}
         timer={gameState?.timer}
         error={error}
+        isVip={isVip}
+        onSkipPhase={actions.skipPhase}
       >
         {!gameState ? (
           <LoadingState message="Waiting for host..." />

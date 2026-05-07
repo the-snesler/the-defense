@@ -125,6 +125,17 @@ export default function Host() {
         return;
       }
 
+      // === VIP skip: translate to TIMER_END for the current state ===
+      if (message.type === "SKIP_PHASE") {
+        const senderId = message.senderId;
+        if (!senderId || !actorRef.current) return;
+        const snapshot = actorRef.current.getSnapshot();
+        const sender = snapshot.context.players[senderId];
+        if (!sender?.isVip) return;
+        send({ type: "TIMER_END" });
+        return;
+      }
+
       // === Reactions: rate-limit, then re-broadcast as REACTION_BURST. Never reach the machine. ===
       if (message.type === "SEND_REACTION") {
         const senderId = message.senderId;
