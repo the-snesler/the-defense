@@ -359,8 +359,7 @@ export const gameMachine = setup({
       roundContent: ({ context }) => {
         const round = context.rounds[context.currentRoundIndex];
         if (!round) return context.roundContent;
-        const target =
-          round.pairs.length * context.config.claimOptionsPerSide;
+        const target = round.pairs.length * context.config.claimOptionsPerSide;
         const { subjectIds, predicateIds } = getChosenIds(context.rounds);
 
         let { subjects, predicates } = context.roundContent;
@@ -777,9 +776,9 @@ export const gameMachine = setup({
     roomCode: "",
     config: {
       minPlayers: 4,
-      maxPlayers: 10,
+      maxPlayers: 12,
       revealSeconds: 5,
-      prepSeconds: 15,
+      prepSeconds: 10,
       openingSeconds: 30,
       crossExamResponseSeconds: 30,
       verdictSeconds: 20,

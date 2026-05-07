@@ -1,6 +1,6 @@
-import RoomCode from "../shared/RoomCode";
 import ConnectionBadge from "../shared/ConnectionBadge";
 import ErrorMessage from "../shared/ErrorMessage";
+import { getPhaseName } from "../../lib/formatters";
 
 interface PlayerLayoutProps {
   roomCode: string;
@@ -19,33 +19,41 @@ export default function PlayerLayout({
   error,
   isVip,
   onSkipPhase,
+  phase,
   children,
 }: PlayerLayoutProps) {
   return (
-    <div className="min-h-screen bg-gray-900 p-4">
-      <div className="max-w-md mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4">
-          <RoomCode code={roomCode} size="md" />
+    <div className="player-stage">
+      <div className="mx-auto min-h-screen max-w-md">
+        <header className="player-chrome">
+          <div className="room-tag">
+            <span className="label">Chamber</span>
+            <span className="value">{roomCode}</span>
+          </div>
           <div className="flex items-center gap-2">
             {isVip && onSkipPhase && (
               <button
                 onClick={onSkipPhase}
                 title="VIP: skip current phase (debug / presenter)"
-                className="px-2 py-1 text-xs uppercase tracking-wide bg-yellow-900/40 hover:bg-yellow-900/60 border border-yellow-500/40 text-yellow-200 rounded"
+                className="btn-brass !px-2 !py-1"
               >
                 Skip
               </button>
             )}
             <ConnectionBadge isConnected={isConnected} size="sm" />
           </div>
-        </div>
+        </header>
 
-        {/* Error Display */}
         {error && <ErrorMessage message={error} />}
 
-        {/* Phase Content */}
-        <div className="bg-gray-800 rounded-lg p-6">{children}</div>
+        <main className="px-4 pb-6 pt-3">
+          {phase && (
+            <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-ink-mute">
+              {getPhaseName(phase)}
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { createRoom } from '../lib/api';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { createRoom } from "../lib/api";
 import { ROOM_CODE_LENGTH } from "@defense/shared";
 
 export default function Lobby() {
@@ -36,59 +36,75 @@ export default function Lobby() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900">
-      <div className="bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full">
-        <h1 className="text-3xl font-bold text-white text-center mb-8">
-          The Defense
-        </h1>
-
-        <form onSubmit={handleJoin} className="mb-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-gray-300 mb-2">Code</label>
-              <input
-                type="text"
-                value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                maxLength={ROOM_CODE_LENGTH}
-                placeholder="67ABCD"
-                className="w-full px-4 py-3 rounded bg-gray-700 text-white text-center text-2xl tracking-widest uppercase mb-4"
-              />
-            </div>
-            <div>
-              <label className="block text-gray-300 mb-2">Name</label>
-              <input
-                type="text"
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                placeholder="Your Name"
-                className="w-full px-4 py-3 rounded bg-gray-700 text-white text-center text-2xl"
-              />
-            </div>
+    <div className="stage public-lobby">
+      <div className="stage-vignette" />
+      <main className="public-lobby-inner">
+        <section className="public-lobby-brand">
+          <div className="lobby-tagline">
+            A party game of unreasonable debate · case open
           </div>
-          <button
-            type="submit"
-            disabled={
-              roomCode.length !== ROOM_CODE_LENGTH || !playerName.trim()
-            }
-            className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Join Game
-          </button>
-        </form>
+          <div className="wordmark">
+            <span className="the">Now Presenting</span>
+            <span className="defense">
+              The Defense<span className="amp">.</span>
+            </span>
+          </div>
+          <p className="lobby-subtitle">
+            All rise. Or don't. We're not your boss.
+          </p>
+        </section>
 
-        <div className="border-t border-gray-700 pt-6">
-          <button
-            onClick={handleCreate}
-            disabled={isCreating}
-            className="w-full px-4 py-3 bg-green-600 cursor-pointer text-white rounded font-semibold hover:bg-green-700 disabled:opacity-50"
-          >
-            {isCreating ? "Creating..." : "Create Room"}
-          </button>
-        </div>
+        <section className="public-lobby-panel">
+          <div className="brass-rule">Enter Chamber</div>
+          <form onSubmit={handleJoin} className="mt-6">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="public-field-label">Code</label>
+                <input
+                  type="text"
+                  value={roomCode}
+                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                  maxLength={ROOM_CODE_LENGTH}
+                  placeholder="67ABCD"
+                  className="public-input font-mono uppercase tracking-[0.28em]"
+                />
+              </div>
+              <div>
+                <label className="public-field-label">Name</label>
+                <input
+                  type="text"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="Your Name"
+                  className="public-input"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={
+                roomCode.length !== ROOM_CODE_LENGTH || !playerName.trim()
+              }
+              className="btn-ox mt-5"
+            >
+              Join Game
+            </button>
+          </form>
 
-        {error && <p className="mt-4 text-red-400 text-center">{error}</p>}
-      </div>
+          <div className="mt-6 border-t border-line pt-6">
+            <button
+              onClick={handleCreate}
+              disabled={isCreating}
+              className="public-create-btn"
+            >
+              {isCreating ? "Creating..." : "Create Room"}
+            </button>
+          </div>
+
+          {error && <p className="mt-4 text-center text-against">{error}</p>}
+        </section>
+      </main>
+      <div className="footer-mark">The Defense · thedefense.party</div>
     </div>
   );
 }

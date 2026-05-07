@@ -1,4 +1,5 @@
 import type { HostPhaseProps } from "./types";
+import PlayerCard from "../../shared/PlayerCard";
 
 export default function LobbyPhase({ state }: HostPhaseProps) {
   const players = Object.values(state.context.players).filter(
@@ -19,23 +20,54 @@ export default function LobbyPhase({ state }: HostPhaseProps) {
     helpText = "VIP can press Start";
   }
   return (
-    <div className="text-white p-8 text-center space-y-6">
-      <h1 className="text-6xl font-bold">The Defense</h1>
-      <p className="text-xl text-gray-400">
-        {count} / {cfg.maxPlayers} players connected
+    <div className="lobby-screen">
+      <div className="lobby-tagline">
+        A party game of unreasonable debate · case open
+      </div>
+
+      <div className="wordmark lobby-wordmark-real">
+        <span className="the">Now Presenting</span>
+        <span className="defense">
+          The Defense<span className="amp">.</span>
+        </span>
+      </div>
+
+      <p className="lobby-subtitle">All rise. Or don't. We're not your boss.</p>
+
+      <div className="lobby-join">
+        <span>
+          Join at <strong>thedefense.party</strong> · room
+        </span>
+        <b>{state.context.roomCode}</b>
+      </div>
+
+      <div className="lobby-player-list">
+        <div className="brass-rule">
+          Counsel Assembled · {count} of {cfg.maxPlayers}
+        </div>
+        <div className="lobby-player-row">
+          {players.map((p, index) => (
+            <PlayerCard
+              key={p.id}
+              player={p}
+              seatNumber={index + 1}
+              variant={p.isVip ? "success" : "default"}
+            />
+          ))}
+          {count < cfg.maxPlayers && (
+            <div className="player-card-host awaiting">
+              <span className="seat-num">
+                {String(count + 1).padStart(2, "0")}
+              </span>
+              <span className="player-name">awaiting...</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <p className={`lobby-help ${ok ? "text-for" : "text-ink-mute"}`}>
+        {helpText}
       </p>
-      <ul className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {players.map((p) => (
-          <li
-            key={p.id}
-            className="bg-gray-800 rounded p-3 text-lg flex items-center justify-center gap-2"
-          >
-            {p.name}
-            {p.isVip && <span title="VIP">👑</span>}
-          </li>
-        ))}
-      </ul>
-      <p className={ok ? "text-green-400" : "text-gray-500"}>{helpText}</p>
     </div>
   );
 }
