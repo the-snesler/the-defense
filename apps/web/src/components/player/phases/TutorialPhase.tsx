@@ -1,38 +1,35 @@
-import type { Player } from "@defense/shared";
+import type { PlayerPhaseProps } from "./types";
 
-interface TutorialPhaseProps {
-  players: Record<string, Player>;
-  playerId: string;
-  onContinue?: () => void;
-}
-
-export default function TutorialPhase({ players, playerId, onContinue }: TutorialPhaseProps) {
-  const currentPlayer = players[playerId];
-  const isVIP = currentPlayer?.isVip || false;
-
+export default function TutorialPhase({ view, actions }: PlayerPhaseProps) {
+  const me = view.players[view.playerId];
+  const isVip = me?.isVip ?? false;
   return (
-    <div className="text-center">
-      <div className="mb-6">
-        <p className="text-gray-300 text-lg mb-2">
-          📺 Review the tutorial on screen
-        </p>
-        <p className="text-gray-400 text-sm">
-          Learn how to play N Of Us Are Lying!
-        </p>
-      </div>
-
-      {isVIP && onContinue && (
+    <div className="space-y-4 text-white">
+      <h2 className="text-2xl font-bold text-center">How to Play</h2>
+      <ul className="space-y-2 text-sm list-disc list-inside text-gray-300">
+        <li>Pick a subject or predicate to build a ridiculous claim.</li>
+        <li>You'll argue FOR or AGAINST. 30 seconds each.</li>
+        <li>
+          <span className="text-green-400 font-semibold">FOR</span> = defend the
+          indefensible.
+        </li>
+        <li>
+          <span className="text-red-400 font-semibold">AGAINST</span> = poke
+          holes; let FOR fill them with something worse.
+        </li>
+        <li>Audience submits questions and votes the winner.</li>
+        <li>Round 2 doubles the points.</li>
+      </ul>
+      {isVip ? (
         <button
-          onClick={onContinue}
-          className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
+          onClick={actions.nextPhase}
+          className="w-full bg-blue-600 hover:bg-blue-700 rounded px-4 py-3 font-bold"
         >
           Continue
         </button>
-      )}
-
-      {!isVIP && (
-        <p className="text-gray-400 text-sm">
-          Waiting for host to continue...
+      ) : (
+        <p className="text-gray-400 text-sm text-center">
+          Waiting for VIP to continue...
         </p>
       )}
     </div>

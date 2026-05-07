@@ -11,6 +11,10 @@ import {
   type ReactionBurstPayload,
 } from "@defense/shared";
 import HostLayout from "../components/host/HostLayout";
+import HostPhaseRouter from "../components/host/phases";
+import ReactionParticles, {
+  type ReactionParticlesHandle,
+} from "../components/shared/ReactionParticles";
 
 type GameActor = Actor<typeof gameMachine>;
 type GameSnapshot = SnapshotFrom<typeof gameMachine>;
@@ -48,8 +52,7 @@ export default function Host() {
 
   // Rolling timestamps per player for reaction rate-limiting.
   const reactionTimestampsRef = useRef<Map<string, number[]>>(new Map());
-  // Recent reaction bursts (consumed by ReactionParticles in step 6).
-  const [, setReactionBursts] = useState<ReactionBurstPayload[]>([]);
+  const particlesRef = useRef<ReactionParticlesHandle | null>(null);
 
   const initializeActor = useCallback((snapshot?: GameSnapshot) => {
     if (actorRef.current) actorRef.current.stop();
@@ -138,7 +141,7 @@ export default function Host() {
         };
         sendMessage({ type: "REACTION_BURST", target: "ALL", payload: burst });
         // Host also animates locally (server doesn't echo to sender).
-        setReactionBursts((prev) => [...prev.slice(-50), burst]);
+        particlesRef.current?.spawn(burst);
         return;
       }
 
@@ -232,28 +235,19 @@ export default function Host() {
     );
   }
 
-  // Phase-specific UI lands in step 6 (per-phase host components + ReactionParticles).
   const phaseLabel = state.value.toString();
-  const playerCount = Object.keys(state.context.players).length;
 
   return (
-    <HostLayout
-      roomCode={code!}
-      isConnected={isConnected}
-      phase={phaseLabel}
-      timer={state.context.timer}
-    >
-      <div className="text-white p-8 space-y-2">
-        <h2 className="text-3xl font-bold">Phase: {phaseLabel}</h2>
-        <p className="text-gray-400">Players: {playerCount}</p>
-        <p className="text-gray-400">Round: {state.context.currentRoundIndex + 1} / 2</p>
-        <p className="text-gray-400">
-          Pair: {state.context.currentPairIndex + 1}
-        </p>
-        <p className="text-gray-500 text-sm">
-          (Host phase components arrive in step 6.)
-        </p>
-      </div>
-    </HostLayout>
+    <>
+      <HostLayout
+        roomCode={code!}
+        isConnected={isConnected}
+        phase={phaseLabel}
+        timer={state.context.timer}
+      >
+        <HostPhaseRouter state={state} />
+      </HostLayout>
+      <ReactionParticles ref={particlesRef} />
+    </>
   );
 }

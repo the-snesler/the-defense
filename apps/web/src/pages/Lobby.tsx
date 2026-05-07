@@ -39,7 +39,7 @@ export default function Lobby() {
     <div className="min-h-screen flex items-center justify-center bg-gray-900">
       <div className="bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full">
         <h1 className="text-3xl font-bold text-white text-center mb-8">
-          N Of Us Are Lying
+          The Defense
         </h1>
 
         <form onSubmit={handleJoin} className="mb-6">
