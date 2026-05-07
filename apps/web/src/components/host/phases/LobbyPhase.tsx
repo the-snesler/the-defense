@@ -1,4 +1,5 @@
 import type { HostPhaseProps } from "./types";
+import { QRCodeSVG } from "qrcode.react";
 
 export default function LobbyPhase({ state }: HostPhaseProps) {
   const players = Object.values(state.context.players).filter(
@@ -24,6 +25,13 @@ export default function LobbyPhase({ state }: HostPhaseProps) {
       <p className="text-xl text-gray-400">
         {count} / {cfg.maxPlayers} players connected
       </p>
+      <div className="bg-white p-4 rounded-lg w-fit mx-auto">
+        <QRCodeSVG
+          value={`${window.location.origin}/?code=${state.context.roomCode}`}
+          size={200}
+          level="M"
+        />
+      </div>
       <ul className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {players.map((p) => (
           <li

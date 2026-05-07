@@ -1,16 +1,24 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { createRoom } from '../lib/api';
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { createRoom } from "../lib/api";
 import { ROOM_CODE_LENGTH } from "@defense/shared";
 
 export default function Lobby() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   // inputs
   const [roomCode, setRoomCode] = useState("");
   const [playerName, setPlayerName] = useState("");
   // UI state
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const codeParam = searchParams.get("code");
+    if (codeParam && codeParam.length === 6) {
+      setRoomCode(codeParam.toUpperCase());
+    }
+  }, [searchParams]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
