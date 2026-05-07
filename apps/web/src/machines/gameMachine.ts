@@ -1,86 +1,175 @@
-import { setup, assign, and, fromPromise } from "xstate";
-import type { Player, Article, Round, RoomConfig } from "@defense/shared";
-import { fetchArticlesForPlayer } from "../lib/wikipedia";
+import { setup, assign, and } from "xstate";
+import {
+  PREDICATES,
+  SUBJECTS,
+  FALLBACK_QUESTIONS,
+  renderClaim,
+} from "@defense/shared";
+import type {
+  AudienceQuestion,
+  ClaimGenerationOffers,
+  CrossExamAssignment,
+  DebateSide,
+  Pair,
+  Player,
+  Predicate,
+  RoomConfig,
+  Round,
+  Subject,
+} from "@defense/shared";
 
-// Scoring constants
-const POINTS_FOR_FOOLING = 700;
-const POINTS_FOR_CORRECT_VOTE = 500;
+// === Helpers ===
 
-// Context type for the game state machine
-interface GameContext {
-  roomCode: string;
-  players: Record<string, Player>;
-  config: RoomConfig;
-  timer: number | null;
-
-  // Research phase
-  researchRoundIndex: number; // 0-2, tracks which of 3 research cycles
-  articleOptions: Record<string, Article[]>; // playerId -> 6 articles (first 3 shown, reroll shows next 3)
-  selectedArticles: Record<string, Article[]>; // playerId -> chosen articles (up to 3)
-  hasRerolled: Record<string, boolean>; // Track who has rerolled in current research round
-  articleFetchStatus: Record<string, boolean>; // Track which players have pending/completed fetches
-
-  // Rounds
-  currentRoundIndex: number;
-  rounds: Round[];
-  currentPresentingPlayerId: string | null;
-  systemArticles: Article[]; // For "everyone lies" rounds
-  expertReady: boolean; // Hide expert identity during guessing
-  expertReadyTimer: number | null; // Delay expert "ready" status
+function shuffle<T>(arr: readonly T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
-// Event types that the machine can receive
+function pickN<T>(arr: readonly T[], n: number): T[] {
+  return shuffle(arr).slice(0, n);
+}
+
+function uid(prefix: string): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Canonical round-robin schedule for an even number of players.
+// Returns n-1 rounds, each containing n/2 pairs of playerIds.
+function buildRoundRobin(playerIds: string[]): [string, string][][] {
+  const n = playerIds.length;
+  if (n < 2 || n % 2 !== 0) return [];
+  const arr = shuffle(playerIds);
+  const rounds: [string, string][][] = [];
+  for (let r = 0; r < n - 1; r++) {
+    const round: [string, string][] = [];
+    for (let i = 0; i < n / 2; i++) {
+      round.push([arr[i], arr[n - 1 - i]]);
+    }
+    rounds.push(round);
+    // rotate: fix position 0, rotate the rest by one (last → second)
+    const fixed = arr[0];
+    const tail = arr.slice(1);
+    tail.unshift(tail.pop()!);
+    arr.splice(0, arr.length, fixed, ...tail);
+  }
+  return rounds;
+}
+
+function buildPairsForRound(
+  pairList: [string, string][],
+  roundNumber: 1 | 2,
+): Pair[] {
+  return pairList.map(([a, b]) => {
+    // randomize which player picks subject vs predicate
+    const [pa, pb] = Math.random() < 0.5 ? [a, b] : [b, a];
+    return {
+      id: uid(`r${roundNumber}_pair`),
+      playerAId: pa,
+      playerBId: pb,
+      chosenSubject: null,
+      chosenPredicate: null,
+      claim: null,
+      forPlayerId: null,
+      againstPlayerId: null,
+      votesFor: [],
+      votesAgainst: [],
+      pointsAwardedFor: 0,
+      pointsAwardedAgainst: 0,
+    };
+  });
+}
+
+function findPairContaining(
+  rounds: Round[],
+  roundIndex: number,
+  playerId: string,
+): { pair: Pair; pairIndex: number } | null {
+  const round = rounds[roundIndex];
+  if (!round) return null;
+  for (let i = 0; i < round.pairs.length; i++) {
+    const p = round.pairs[i];
+    if (p.playerAId === playerId || p.playerBId === playerId) {
+      return { pair: p, pairIndex: i };
+    }
+  }
+  return null;
+}
+
+function replacePair(
+  rounds: Round[],
+  roundIndex: number,
+  pairIndex: number,
+  next: Pair,
+): Round[] {
+  return rounds.map((r, ri) => {
+    if (ri !== roundIndex) return r;
+    return {
+      ...r,
+      pairs: r.pairs.map((p, pi) => (pi === pairIndex ? next : p)),
+    };
+  });
+}
+
+// === Context ===
+
+interface GameContext {
+  roomCode: string;
+  config: RoomConfig;
+  players: Record<string, Player>;
+  timer: number | null;
+
+  rounds: Round[]; // length 0 until pairing; then length 2
+  currentRoundIndex: number;
+  currentPairIndex: number;
+
+  claimOffers: ClaimGenerationOffers;
+
+  audienceQuestionsForCurrentPair: AudienceQuestion[];
+
+  crossExamAssignments: {
+    q1: CrossExamAssignment | null;
+    q2: CrossExamAssignment | null;
+  };
+}
+
+// === Events ===
+
 type GameEvent =
-  | { type: "START_GAME"; senderId: string }
   | { type: "PLAYER_CONNECTED"; playerId: string; playerName: string }
   | { type: "PLAYER_DISCONNECTED"; playerId: string }
   | { type: "HOST_CONNECTED"; players: { id: string; name: string }[] }
-  | { type: "PROVIDE_ARTICLES"; playerId: string; articles: Article[] }
-  | { type: "REROLL_ARTICLES"; senderId: string }
-  | { type: "CHOOSE_ARTICLE"; senderId: string; articleId: string }
-  | {
-      type: "SUBMIT_SUMMARY";
-      senderId: string;
-      articleId: string;
-      summary: string;
-    }
-  | { type: "SUBMIT_LIE"; senderId: string; text: string }
-  | { type: "MARK_TRUE"; senderId: string; playerId: string }
-  | { type: "SUBMIT_VOTE"; senderId: string; answerId: string }
-  | { type: "REFETCH_ARTICLES" }
+  | { type: "START_GAME"; senderId: string }
+  | { type: "NEXT_PHASE"; senderId: string }
+  | { type: "SUBMIT_SUBJECT"; senderId: string; subjectId: string }
+  | { type: "SUBMIT_PREDICATE"; senderId: string; predicateId: string }
+  | { type: "SUBMIT_QUESTION"; senderId: string; text: string }
+  | { type: "SUBMIT_VERDICT"; senderId: string; side: DebateSide }
   | { type: "TIMER_TICK" }
-  | { type: "TIMER_END" }
-  | { type: "NEXT_PHASE" };
+  | { type: "TIMER_END" };
 
-// Create the game state machine
+// === Machine ===
+
 export const gameMachine = setup({
   types: {
     context: {} as GameContext,
     events: {} as GameEvent,
   },
-  actors: {
-    fetchArticles: fromPromise(
-      async ({ input }: { input: { playerId: string } }) => {
-        const articles = await fetchArticlesForPlayer(6);
-        return { playerId: input.playerId, articles };
-      },
-    ),
-  },
+
   actions: {
     addPlayer: assign({
       players: ({ context, event }) => {
         if (event.type !== "PLAYER_CONNECTED") return context.players;
-
-        // reconnect, preserve existing properties
-        const existingPlayer = context.players[event.playerId];
-        if (existingPlayer) {
+        const existing = context.players[event.playerId];
+        if (existing) {
           return {
             ...context.players,
-            [event.playerId]: { ...existingPlayer, isConnected: true },
+            [event.playerId]: { ...existing, isConnected: true },
           };
         }
-
-        // new player, create from scratch
         const isFirst = Object.keys(context.players).length === 0;
         const newPlayer: Player = {
           id: event.playerId,
@@ -97,689 +186,544 @@ export const gameMachine = setup({
     disconnectPlayer: assign({
       players: ({ context, event }) => {
         if (event.type !== "PLAYER_DISCONNECTED") return context.players;
-        const player = context.players[event.playerId];
-        if (!player) return context.players;
+        const p = context.players[event.playerId];
+        if (!p) return context.players;
         return {
           ...context.players,
-          [event.playerId]: { ...player, isConnected: false },
+          [event.playerId]: { ...p, isConnected: false },
         };
       },
     }),
 
-    provideArticles: assign({
-      articleOptions: ({ context, event }) => {
-        if (event.type !== "PROVIDE_ARTICLES" || event.playerId === "SYSTEM")
-          return context.articleOptions;
-        return { ...context.articleOptions, [event.playerId]: event.articles };
-      },
-      systemArticles: ({ context, event }) => {
-        if (event.type !== "PROVIDE_ARTICLES" || event.playerId !== "SYSTEM")
-          return context.systemArticles;
-        return [...context.systemArticles, ...event.articles];
-      },
-      articleFetchStatus: ({ context, event }) => {
-        if (event.type !== "PROVIDE_ARTICLES")
-          return context.articleFetchStatus;
-        return { ...context.articleFetchStatus, [event.playerId]: false };
+    computePairings: assign(({ context }) => {
+      const connectedIds = Object.values(context.players)
+        .filter((p) => p.isConnected)
+        .map((p) => p.id);
+
+      const schedule = buildRoundRobin(connectedIds);
+      // Pick two distinct rounds from the schedule for R1 and R2.
+      const indices = shuffle(schedule.map((_, i) => i));
+      const r1Idx = indices[0] ?? 0;
+      const r2Idx = indices[1] ?? (indices[0] === 0 ? 1 : 0);
+
+      const r1Pairs = buildPairsForRound(schedule[r1Idx] ?? [], 1);
+      const r2Pairs = buildPairsForRound(schedule[r2Idx] ?? [], 2);
+
+      const rounds: Round[] = [
+        {
+          roundNumber: 1,
+          pointPot: context.config.round1Pot,
+          pairs: r1Pairs,
+        },
+        {
+          roundNumber: 2,
+          pointPot: context.config.round2Pot,
+          pairs: r2Pairs,
+        },
+      ];
+
+      return {
+        rounds,
+        currentRoundIndex: 0,
+        currentPairIndex: 0,
+      };
+    }),
+
+    drawClaimOffers: assign({
+      claimOffers: ({ context }) => {
+        const round = context.rounds[context.currentRoundIndex];
+        if (!round) return context.claimOffers;
+        const subjectsByPairId: Record<string, Subject[]> = {};
+        const predicatesByPairId: Record<string, Predicate[]> = {};
+        for (const pair of round.pairs) {
+          subjectsByPairId[pair.id] = pickN(
+            SUBJECTS,
+            context.config.subjectsPerPlayer,
+          );
+          predicatesByPairId[pair.id] = pickN(
+            PREDICATES,
+            context.config.predicatesPerPlayer,
+          );
+        }
+        return { subjectsByPairId, predicatesByPairId };
       },
     }),
 
-    markArticleFetching: assign({
-      articleFetchStatus: ({ context }, params: { playerId: string }) => {
-        return { ...context.articleFetchStatus, [params.playerId]: true };
+    recordSubject: assign({
+      rounds: ({ context, event }) => {
+        if (event.type !== "SUBMIT_SUBJECT") return context.rounds;
+        const found = findPairContaining(
+          context.rounds,
+          context.currentRoundIndex,
+          event.senderId,
+        );
+        if (!found) return context.rounds;
+        if (found.pair.playerAId !== event.senderId) return context.rounds;
+        if (found.pair.chosenSubject) return context.rounds;
+        const offers = context.claimOffers.subjectsByPairId[found.pair.id] ?? [];
+        const subject = offers.find((s) => s.id === event.subjectId);
+        if (!subject) return context.rounds;
+        return replacePair(
+          context.rounds,
+          context.currentRoundIndex,
+          found.pairIndex,
+          { ...found.pair, chosenSubject: subject },
+        );
       },
     }),
 
-    fetchArticlesForPlayers: ({ context, self }) => {
-      // Fetch system articles for "everyone lies" rounds
-      if (context.systemArticles.length < 3) {
-        fetchArticlesForPlayer(3).then((articles) => {
-          self.send({ type: "PROVIDE_ARTICLES", playerId: "SYSTEM", articles });
+    recordPredicate: assign({
+      rounds: ({ context, event }) => {
+        if (event.type !== "SUBMIT_PREDICATE") return context.rounds;
+        const found = findPairContaining(
+          context.rounds,
+          context.currentRoundIndex,
+          event.senderId,
+        );
+        if (!found) return context.rounds;
+        if (found.pair.playerBId !== event.senderId) return context.rounds;
+        if (found.pair.chosenPredicate) return context.rounds;
+        const offers =
+          context.claimOffers.predicatesByPairId[found.pair.id] ?? [];
+        const predicate = offers.find((p) => p.id === event.predicateId);
+        if (!predicate) return context.rounds;
+        return replacePair(
+          context.rounds,
+          context.currentRoundIndex,
+          found.pairIndex,
+          { ...found.pair, chosenPredicate: predicate },
+        );
+      },
+    }),
+
+    finalizeClaims: assign({
+      rounds: ({ context }) => {
+        const ri = context.currentRoundIndex;
+        const round = context.rounds[ri];
+        if (!round) return context.rounds;
+        const updatedPairs = round.pairs.map((pair) => {
+          const subj =
+            pair.chosenSubject ??
+            (context.claimOffers.subjectsByPairId[pair.id] ?? [])[0] ??
+            null;
+          const pred =
+            pair.chosenPredicate ??
+            (context.claimOffers.predicatesByPairId[pair.id] ?? [])[0] ??
+            null;
+          if (!subj || !pred) return pair;
+          // assign sides randomly
+          const aIsFor = Math.random() < 0.5;
+          return {
+            ...pair,
+            chosenSubject: subj,
+            chosenPredicate: pred,
+            claim: { subject: subj, predicate: pred, text: renderClaim(subj, pred) },
+            forPlayerId: aIsFor ? pair.playerAId : pair.playerBId,
+            againstPlayerId: aIsFor ? pair.playerBId : pair.playerAId,
+          };
         });
+        return context.rounds.map((r, i) =>
+          i === ri ? { ...r, pairs: updatedPairs } : r,
+        );
+      },
+    }),
+
+    clearAudienceQuestions: assign({
+      audienceQuestionsForCurrentPair: () => [],
+      crossExamAssignments: () => ({ q1: null, q2: null }),
+    }),
+
+    recordAudienceQuestion: assign({
+      audienceQuestionsForCurrentPair: ({ context, event }) => {
+        if (event.type !== "SUBMIT_QUESTION")
+          return context.audienceQuestionsForCurrentPair;
+        const round = context.rounds[context.currentRoundIndex];
+        const pair = round?.pairs[context.currentPairIndex];
+        if (!pair) return context.audienceQuestionsForCurrentPair;
+        // Active debaters can't submit
+        if (
+          event.senderId === pair.forPlayerId ||
+          event.senderId === pair.againstPlayerId
+        ) {
+          return context.audienceQuestionsForCurrentPair;
+        }
+        if (context.audienceQuestionsForCurrentPair.length >= 50) {
+          return context.audienceQuestionsForCurrentPair;
+        }
+        const q: AudienceQuestion = {
+          id: uid("q"),
+          text: event.text,
+          submitterId: event.senderId,
+          pairId: pair.id,
+          submittedAt: Date.now(),
+          isFallback: false,
+        };
+        return [...context.audienceQuestionsForCurrentPair, q];
+      },
+    }),
+
+    setupCrossExam: assign(({ context }) => {
+      const round = context.rounds[context.currentRoundIndex];
+      const pair = round?.pairs[context.currentPairIndex];
+      if (!pair || !pair.forPlayerId || !pair.againstPlayerId) {
+        return {};
       }
 
-      // Find players who need articles (not already fetched/fetching)
-      const playersNeedingArticles = Object.keys(context.players).filter(
-        (playerId) =>
-          !context.articleOptions[playerId] &&
-          !context.articleFetchStatus[playerId],
-      );
-
-      // Fetch articles for each player concurrently
-      playersNeedingArticles.forEach((playerId) => {
-        fetchArticlesForPlayer(6)
-          .then((articles) => {
-            self.send({ type: "PROVIDE_ARTICLES", playerId, articles });
-          })
-          .catch((error) => {
-            console.error(`Failed to fetch articles for ${playerId}:`, error);
+      // Top up with fallback questions if pool is too thin.
+      let pool = [...context.audienceQuestionsForCurrentPair];
+      const need = context.config.minQuestionsBeforeFallback - pool.length;
+      if (need > 0) {
+        const fallbacks = shuffle(FALLBACK_QUESTIONS).slice(0, need);
+        for (const text of fallbacks) {
+          pool.push({
+            id: uid("qf"),
+            text,
+            submitterId: "SYSTEM",
+            pairId: pair.id,
+            submittedAt: Date.now(),
+            isFallback: true,
           });
-      });
-    },
+        }
+      }
 
-    rerollArticles: assign({
-      hasRerolled: ({ context, event }) => {
-        if (event.type !== "REROLL_ARTICLES") return context.hasRerolled;
-        return { ...context.hasRerolled, [event.senderId]: true };
-      },
+      // Pick 2 distinct questions; Q1 → FOR, Q2 → AGAINST.
+      const picked = shuffle(pool).slice(0, 2);
+      const q1 = picked[0];
+      const q2 = picked[1] ?? picked[0];
+
+      return {
+        audienceQuestionsForCurrentPair: pool,
+        crossExamAssignments: {
+          q1: q1 ? { questionId: q1.id, responderId: pair.forPlayerId } : null,
+          q2: q2
+            ? { questionId: q2.id, responderId: pair.againstPlayerId }
+            : null,
+        },
+      };
     }),
 
-    chooseArticle: assign({
-      selectedArticles: ({ context, event }) => {
-        if (event.type !== "CHOOSE_ARTICLE") return context.selectedArticles;
-        const playerId = event.senderId;
-        const articles = context.articleOptions[playerId] || [];
-        const chosen = articles.find((a) => a.id === event.articleId);
-        if (!chosen) return context.selectedArticles;
-
-        const existing = context.selectedArticles[playerId] || [];
-        return {
-          ...context.selectedArticles,
-          [playerId]: [...existing, chosen],
-        };
-      },
-      articleOptions: ({ context, event }) => {
-        if (event.type !== "CHOOSE_ARTICLE") return context.articleOptions;
-        // Clear article options for this player after choosing
-        const { [event.senderId]: _, ...rest } = context.articleOptions;
-        return rest;
-      },
-    }),
-
-    submitSummary: assign({
-      selectedArticles: ({ context, event }) => {
-        if (event.type !== "SUBMIT_SUMMARY") return context.selectedArticles;
-        const playerId = event.senderId;
-        const playerArticles = context.selectedArticles[playerId] || [];
-        const updatedArticles = playerArticles.map((article) =>
-          article.id === event.articleId
-            ? { ...article, summary: event.summary }
-            : article,
-        );
-        return { ...context.selectedArticles, [playerId]: updatedArticles };
-      },
-    }),
-
-    submitLie: assign({
+    recordVerdictVote: assign({
       rounds: ({ context, event }) => {
-        if (event.type !== "SUBMIT_LIE") return context.rounds;
-        const currentRound = context.rounds[context.currentRoundIndex];
-        if (!currentRound) return context.rounds;
-
-        const updatedRound: Round = {
-          ...currentRound,
-          lies: { ...currentRound.lies, [event.senderId]: event.text },
-        };
-        return context.rounds.map((r, i) =>
-          i === context.currentRoundIndex ? updatedRound : r,
-        );
-      },
-      expertReadyTimer: ({ context, event }) => {
-        if (event.type !== "SUBMIT_LIE") return context.expertReadyTimer;
-        if (context.expertReady || context.expertReadyTimer !== null)
-          return context.expertReadyTimer;
-
-        const currentRound = context.rounds[context.currentRoundIndex];
-        if (!currentRound) return null;
-
-        const connectedPlayers = Object.values(context.players).filter(
-          (p) => p.isConnected,
-        );
-        const liarsCount = connectedPlayers.filter(
-          (p) => p.id !== currentRound.targetPlayerId,
-        ).length;
-        const submittedCount = Object.keys(currentRound.lies).length + 1; // +1 for the current submission
-
-        // Auto-submit expert summary 2 seconds after half of non-experts submit
-        if (submittedCount >= Math.ceil(liarsCount / 2)) {
-          return 2;
+        if (event.type !== "SUBMIT_VERDICT") return context.rounds;
+        const ri = context.currentRoundIndex;
+        const round = context.rounds[ri];
+        const pair = round?.pairs[context.currentPairIndex];
+        if (!pair) return context.rounds;
+        // active debaters can't vote
+        if (
+          event.senderId === pair.forPlayerId ||
+          event.senderId === pair.againstPlayerId
+        ) {
+          return context.rounds;
         }
-        return null;
-      },
-    }),
-
-    markTrue: assign({
-      rounds: ({ context, event }) => {
-        if (event.type !== "MARK_TRUE") return context.rounds;
-        const currentRound = context.rounds[context.currentRoundIndex];
-        if (!currentRound) return context.rounds;
-
-        const updatedRound: Round = {
-          ...currentRound,
-          markedTrue: [
-            ...new Set([...currentRound.markedTrue, event.playerId]),
-          ],
+        // dedupe: replace any existing vote from this voter
+        const stripped = {
+          ...pair,
+          votesFor: pair.votesFor.filter((v) => v !== event.senderId),
+          votesAgainst: pair.votesAgainst.filter((v) => v !== event.senderId),
         };
-        return context.rounds.map((r, i) =>
-          i === context.currentRoundIndex ? updatedRound : r,
-        );
-      },
-    }),
-
-    shuffleAnswers: assign({
-      rounds: ({ context }) => {
-        const currentRound = context.rounds[context.currentRoundIndex];
-        if (!currentRound) return context.rounds;
-
-        const answerIds = [...Object.keys(currentRound.lies)];
-        if (!currentRound.isEveryoneLies) {
-          answerIds.push(currentRound.targetPlayerId);
-        }
-
-        // Shuffle answerIds
-        for (let i = answerIds.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [answerIds[i], answerIds[j]] = [answerIds[j], answerIds[i]];
-        }
-
-        const updatedRound: Round = {
-          ...currentRound,
-          shuffledAnswerIds: answerIds,
-        };
-        return context.rounds.map((r, i) =>
-          i === context.currentRoundIndex ? updatedRound : r,
-        );
-      },
-    }),
-
-    submitVote: assign({
-      rounds: ({ context, event }) => {
-        if (event.type !== "SUBMIT_VOTE") return context.rounds;
-        const currentRound = context.rounds[context.currentRoundIndex];
-        if (!currentRound) return context.rounds;
-
-        const updatedRound: Round = {
-          ...currentRound,
-          votes: { ...currentRound.votes, [event.senderId]: event.answerId },
-        };
-        return context.rounds.map((r, i) =>
-          i === context.currentRoundIndex ? updatedRound : r,
-        );
-      },
-      expertReadyTimer: ({ context, event }) => {
-        if (event.type !== "SUBMIT_VOTE") return context.expertReadyTimer;
-        if (context.expertReady || context.expertReadyTimer !== null)
-          return context.expertReadyTimer;
-
-        const currentRound = context.rounds[context.currentRoundIndex];
-        if (!currentRound) return null;
-
-        const connectedPlayers = Object.values(context.players).filter(
-          (p) => p.isConnected,
-        );
-        const votersCount = connectedPlayers.filter(
-          (p) => p.id !== currentRound.targetPlayerId,
-        ).length;
-        const submittedCount = Object.keys(currentRound.votes).length + 1;
-
-        // Auto-submit expert status 2 seconds after half of voters submit
-        if (submittedCount >= Math.ceil(votersCount / 2)) {
-          return 2;
-        }
-        return null;
-      },
-    }),
-
-    calculateScores: assign({
-      players: ({ context }) => {
-        const currentRound = context.rounds[context.currentRoundIndex];
-        if (!currentRound) return context.players;
-
-        const updatedPlayers = { ...context.players };
-        const expertId = currentRound.targetPlayerId;
-
-        // Process each vote
-        for (const [voterId, answerId] of Object.entries(currentRound.votes)) {
-          // Check if voter chose the correct answer (the expert's ID)
-          // OR if they chose a lie that was marked as true
-          const isCorrect =
-            answerId === expertId || currentRound.markedTrue.includes(answerId);
-
-          if (isCorrect) {
-            // Voter gets points for correct vote
-            const voter = updatedPlayers[voterId];
-            if (voter) {
-              updatedPlayers[voterId] = {
-                ...voter,
-                score: voter.score + POINTS_FOR_CORRECT_VOTE,
+        const next: Pair =
+          event.side === "FOR"
+            ? { ...stripped, votesFor: [...stripped.votesFor, event.senderId] }
+            : {
+                ...stripped,
+                votesAgainst: [...stripped.votesAgainst, event.senderId],
               };
-            }
-          } else {
-            // The person whose lie was voted for gets points
-            const liar = updatedPlayers[answerId];
-            if (liar) {
-              updatedPlayers[answerId] = {
-                ...liar,
-                score: liar.score + POINTS_FOR_FOOLING,
-              };
-            }
-          }
-        }
-
-        return updatedPlayers;
+        return replacePair(
+          context.rounds,
+          ri,
+          context.currentPairIndex,
+          next,
+        );
       },
     }),
 
-    incrementResearchRound: assign({
-      researchRoundIndex: ({ context }) => context.researchRoundIndex + 1,
-      hasRerolled: () => ({}), // Reset reroll tracking for new research round
-      articleFetchStatus: () => ({}),
+    computeVerdictPoints: assign(({ context }) => {
+      const ri = context.currentRoundIndex;
+      const pi = context.currentPairIndex;
+      const round = context.rounds[ri];
+      const pair = round?.pairs[pi];
+      if (!pair || !pair.forPlayerId || !pair.againstPlayerId) return {};
+
+      const total = pair.votesFor.length + pair.votesAgainst.length;
+      const pot = round.pointPot;
+      let forPts: number;
+      let againstPts: number;
+      if (total === 0) {
+        forPts = Math.floor(pot / 2);
+        againstPts = pot - forPts;
+      } else {
+        forPts = Math.round((pair.votesFor.length / total) * pot);
+        againstPts = pot - forPts;
+      }
+
+      const updatedPair: Pair = {
+        ...pair,
+        pointsAwardedFor: forPts,
+        pointsAwardedAgainst: againstPts,
+      };
+      const updatedRounds = replacePair(context.rounds, ri, pi, updatedPair);
+
+      const players = { ...context.players };
+      const forP = players[pair.forPlayerId];
+      const againstP = players[pair.againstPlayerId];
+      if (forP) players[pair.forPlayerId] = { ...forP, score: forP.score + forPts };
+      if (againstP)
+        players[pair.againstPlayerId] = {
+          ...againstP,
+          score: againstP.score + againstPts,
+        };
+
+      return { rounds: updatedRounds, players };
     }),
 
-    setupRounds: assign({
-      rounds: ({ context }) => {
-        // Create one round per player per article they researched
-        const rounds: Round[] = [];
-        const playerIds = Object.keys(context.players);
-
-        for (const playerId of playerIds) {
-          const articles = context.selectedArticles[playerId] || [];
-          for (let i = 0; i < articles.length; i++) {
-            if (i !== 0 && Math.random() > (context.config.playerAdditionalArticleChance || 0)) break
-            const article = articles[i];
-            rounds.push({
-              targetPlayerId: playerId,
-              article,
-              lies: {},
-              votes: {},
-              markedTrue: [],
-              isEveryoneLies: false,
-            });
-          }
-        }
-
-        // Shuffle rounds so they're not all grouped by player
-        for (let i = rounds.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [rounds[i], rounds[j]] = [rounds[j], rounds[i]];
-        }
-
-        // Apply "everyone lies" chance
-        let systemArticleIdx = 0;
-        return rounds.map((round) => {
-          if (
-            Math.random() < (context.config.everyoneLiesChance || 0) &&
-            systemArticleIdx < context.systemArticles.length
-          ) {
-            const systemArticle = context.systemArticles[systemArticleIdx++];
-            return {
-              ...round,
-              article: systemArticle,
-              isEveryoneLies: true,
-              targetPlayerId: "NONE", // No expert
-            };
-          }
-          return round;
-        });
-      },
-      currentRoundIndex: () => 0,
-      currentPresentingPlayerId: ({ context }) => {
-        // Will be set properly once rounds are created
-        const playerIds = Object.keys(context.players);
-        return playerIds[0] || null;
-      },
+    nextPair: assign({
+      currentPairIndex: ({ context }) => context.currentPairIndex + 1,
     }),
 
-    setupCurrentRound: assign({
-      currentPresentingPlayerId: ({ context }) => {
-        const currentRound = context.rounds[context.currentRoundIndex];
-        return currentRound?.targetPlayerId || null;
-      },
-      expertReady: ({ context }) => {
-        const currentRound = context.rounds[context.currentRoundIndex];
-        // If it's "everyone lies", there is no expert to wait for
-        return currentRound?.isEveryoneLies || false;
-      },
-      expertReadyTimer: () => null,
-    }),
-
-    setupVoting: assign({
-      expertReady: ({ context }) => {
-        const currentRound = context.rounds[context.currentRoundIndex];
-        return currentRound?.isEveryoneLies || false;
-      },
-      expertReadyTimer: () => null,
-      timer: ({ context }) => context.config.voteTimeSeconds,
-    }),
-
-    nextRound: assign({
+    incrementRound: assign({
       currentRoundIndex: ({ context }) => context.currentRoundIndex + 1,
+      currentPairIndex: () => 0,
     }),
 
-    setResearchTimer: assign({
-      timer: ({ context }) => context.config.researchTimeSeconds,
+    setPairingTimer: assign({
+      timer: ({ context }) => context.config.pairingDisplaySeconds,
     }),
-
-    setLieTimer: assign({
-      timer: ({ context }) => context.config.lieTimeSeconds,
+    setClaimGenerationTimer: assign({
+      timer: ({ context }) => context.config.claimGenerationSeconds,
     }),
-
-    setPresentationTimer: assign({
-      timer: ({ context }) => context.config.presentationTimeSeconds,
-    }),
-
-    setVoteTimer: assign({
-      timer: ({ context }) => context.config.voteTimeSeconds,
-    }),
-
     setRevealTimer: assign({
-      timer: () => 15, // 15 seconds for reveal
+      timer: ({ context }) => context.config.revealSeconds,
     }),
+    setPrepTimer: assign({
+      timer: ({ context }) => context.config.prepSeconds,
+    }),
+    setOpeningTimer: assign({
+      timer: ({ context }) => context.config.openingSeconds,
+    }),
+    setCrossExamTimer: assign({
+      timer: ({ context }) => context.config.crossExamResponseSeconds,
+    }),
+    setVerdictTimer: assign({
+      timer: ({ context }) => context.config.verdictSeconds,
+    }),
+    setTransitionTimer: assign({
+      timer: ({ context }) => context.config.transitionSeconds,
+    }),
+    setRoundBreakTimer: assign({
+      timer: ({ context }) => context.config.roundBreakSeconds,
+    }),
+    clearTimer: assign({ timer: () => null }),
 
     tickTimer: assign({
       timer: ({ context }) =>
         context.timer !== null ? Math.max(0, context.timer - 1) : null,
-      expertReadyTimer: ({ context }) => {
-        if (context.expertReadyTimer === null) return null;
-        return Math.max(0, context.expertReadyTimer - 1);
-      },
-      expertReady: ({ context }) => {
-        if (context.expertReady) return true;
-        return context.expertReadyTimer === 0;
-      },
-    }),
-
-    clearTimer: assign({
-      timer: () => null,
     }),
   },
-  guards: {
-    enoughPlayers: ({ context }) => {
-      const connectedPlayers = Object.values(context.players).filter(
-        (p) => p.isConnected,
-      );
-      return connectedPlayers.length >= 3;
-    },
 
+  guards: {
     senderIsVIP: ({ context, event }) => {
       if (!("senderId" in event)) return false;
-      const player = context.players[event.senderId];
-      return player?.isVip || false;
+      const p = context.players[event.senderId];
+      return p?.isVip ?? false;
     },
 
-    hasMoreResearchRounds: ({ context }) => context.researchRoundIndex < context.config.articlesPerPlayer - 1,
-
-    researchComplete: ({ context }) => context.researchRoundIndex >= context.config.articlesPerPlayer - 1,
-
-    hasMoreGuessingRounds: ({ context }) =>
-      context.currentRoundIndex < context.rounds.length - 1,
-
-    allRoundsComplete: ({ context }) =>
-      context.currentRoundIndex >= context.rounds.length - 1,
-
-    canReroll: ({ context, event }) => {
-      if (event.type !== "REROLL_ARTICLES") return false;
-      return !context.hasRerolled[event.senderId];
+    enoughEvenPlayers: ({ context }) => {
+      const n = Object.values(context.players).filter((p) => p.isConnected)
+        .length;
+      return (
+        n >= context.config.minPlayers &&
+        n <= context.config.maxPlayers &&
+        n % 2 === 0
+      );
     },
 
-    allPlayersChoseArticle: ({ context }) => {
-      const connectedPlayers = Object.values(context.players).filter(
-        (p) => p.isConnected,
+    allPairsSubmittedClaim: ({ context }) => {
+      const round = context.rounds[context.currentRoundIndex];
+      if (!round || round.pairs.length === 0) return false;
+      return round.pairs.every(
+        (p) => p.chosenSubject !== null && p.chosenPredicate !== null,
       );
-
-      return connectedPlayers.every((player) => {
-        const selectedCount = (context.selectedArticles[player.id] || [])
-          .length;
-        const expectedCount = context.researchRoundIndex + 1; // Round 0 needs 1, round 1 needs 2, etc.
-        return selectedCount >= expectedCount;
-      });
     },
 
-    allPlayersSubmittedSummary: ({ context }) => {
-      const connectedPlayers = Object.values(context.players).filter(
-        (p) => p.isConnected,
+    allAudienceVoted: ({ context }) => {
+      const round = context.rounds[context.currentRoundIndex];
+      const pair = round?.pairs[context.currentPairIndex];
+      if (!pair) return false;
+      const audience = Object.values(context.players).filter(
+        (p) =>
+          p.isConnected &&
+          p.id !== pair.forPlayerId &&
+          p.id !== pair.againstPlayerId,
       );
-      const expectedCount = context.researchRoundIndex + 1; // Round 0 needs 1 summary, round 1 needs 2, etc.
-
-      return connectedPlayers.every((player) => {
-        const articles = context.selectedArticles[player.id] || [];
-        const summariesCount = articles.filter((a) => a.summary).length;
-        return summariesCount >= expectedCount;
-      });
+      const voted = pair.votesFor.length + pair.votesAgainst.length;
+      return audience.length > 0 && voted >= audience.length;
     },
 
-    allPlayersSubmittedLie: ({ context }) => {
-      const currentRound = context.rounds[context.currentRoundIndex];
-      if (!currentRound) return false;
-
-      const connectedPlayers = Object.values(context.players).filter(
-        (p) => p.isConnected,
-      );
-
-      // All players except the truth-teller should submit a lie
-      const playersWhoShouldLie = connectedPlayers.filter(
-        (p) => p.id !== currentRound.targetPlayerId,
-      );
-
-      const allLiesSubmitted = playersWhoShouldLie.every(
-        (player) => currentRound.lies[player.id] !== undefined,
-      );
-
-      // Also wait for the fake expert "ready" status to hide their identity
-      return allLiesSubmitted && context.expertReady;
+    hasMorePairsInRound: ({ context }) => {
+      const round = context.rounds[context.currentRoundIndex];
+      if (!round) return false;
+      return context.currentPairIndex < round.pairs.length - 1;
     },
 
-    allPlayersVoted: ({ context }) => {
-      const currentRound = context.rounds[context.currentRoundIndex];
-      if (!currentRound) return false;
-
-      const connectedPlayers = Object.values(context.players).filter(
-        (p) => p.isConnected,
-      );
-
-      // All players except the truth-teller should vote
-      const playersWhoShouldVote = connectedPlayers.filter(
-        (p) => p.id !== currentRound.targetPlayerId,
-      );
-
-      const allVotesSubmitted = playersWhoShouldVote.every(
-        (player) => currentRound.votes[player.id] !== undefined,
-      );
-
-      return allVotesSubmitted && context.expertReady;
-    },
+    isFirstRound: ({ context }) => context.currentRoundIndex === 0,
   },
 }).createMachine({
-  id: "game",
+  id: "defense",
   initial: "lobby",
+
   context: {
     roomCode: "",
-    players: {},
     config: {
-      maxPlayers: 8,
-      articlesPerPlayer: 2,
-      articleSelectionTimeSeconds: 60,
-      researchTimeSeconds: 240,
-      lieTimeSeconds: 60,
-      presentationTimeSeconds: 600,
-      voteTimeSeconds: 30,
-      everyoneLiesChance: 0.10,
-      playerAdditionalArticleChance: 0.5,
+      minPlayers: 4,
+      maxPlayers: 10,
+      revealSeconds: 5,
+      prepSeconds: 15,
+      openingSeconds: 30,
+      crossExamResponseSeconds: 30,
+      verdictSeconds: 20,
+      transitionSeconds: 4,
+      claimGenerationSeconds: 20,
+      pairingDisplaySeconds: 8,
+      roundBreakSeconds: 8,
+      round1Pot: 1000,
+      round2Pot: 2000,
+      subjectsPerPlayer: 3,
+      predicatesPerPlayer: 3,
+      minQuestionsBeforeFallback: 2,
     },
+    players: {},
     timer: null,
-    researchRoundIndex: 0,
-    articleOptions: {},
-    selectedArticles: {},
-    hasRerolled: {},
-    articleFetchStatus: {},
-    currentRoundIndex: 0,
     rounds: [],
-    currentPresentingPlayerId: null,
-    systemArticles: [],
-    expertReady: false,
-    expertReadyTimer: null,
+    currentRoundIndex: 0,
+    currentPairIndex: 0,
+    claimOffers: { subjectsByPairId: {}, predicatesByPairId: {} },
+    audienceQuestionsForCurrentPair: [],
+    crossExamAssignments: { q1: null, q2: null },
   },
+
   on: {
-    PLAYER_CONNECTED: {
-      actions: "addPlayer",
-    },
-    PLAYER_DISCONNECTED: {
-      actions: "disconnectPlayer",
-    }
+    PLAYER_CONNECTED: { actions: "addPlayer" },
+    PLAYER_DISCONNECTED: { actions: "disconnectPlayer" },
   },
+
   states: {
     lobby: {
       on: {
         START_GAME: {
           target: "tutorial",
-          guard: and(["senderIsVIP", "enoughPlayers"]),
+          guard: and(["senderIsVIP", "enoughEvenPlayers"]),
         },
       },
     },
 
     tutorial: {
       on: {
-        NEXT_PHASE: "topicSelection",
+        NEXT_PHASE: { target: "pairing", guard: "senderIsVIP" },
       },
     },
 
-    topicSelection: {
-      entry: ["setResearchTimer", "fetchArticlesForPlayers"],
+    pairing: {
+      entry: ["computePairings", "setPairingTimer"],
       on: {
-        REFETCH_ARTICLES: {
-          actions: "fetchArticlesForPlayers",
-        },
-        PROVIDE_ARTICLES: {
-          actions: "provideArticles",
-        },
-        REROLL_ARTICLES: {
-          guard: "canReroll",
-          actions: "rerollArticles",
-        },
-        CHOOSE_ARTICLE: {
-          actions: "chooseArticle",
-        },
-        TIMER_TICK: {
-          actions: "tickTimer",
-        },
-        TIMER_END: "writing",
-        NEXT_PHASE: "writing",
-      },
-      always: {
-        target: "writing",
-        guard: "allPlayersChoseArticle",
+        TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: "claimGeneration",
+        NEXT_PHASE: { target: "claimGeneration", guard: "senderIsVIP" },
       },
     },
 
-    writing: {
+    claimGeneration: {
+      entry: ["drawClaimOffers", "setClaimGenerationTimer"],
       on: {
-        SUBMIT_SUMMARY: {
-          actions: "submitSummary",
-        },
-        TIMER_TICK: {
-          actions: "tickTimer",
-        },
-        TIMER_END: [
-          {
-            target: "topicSelection",
-            guard: "hasMoreResearchRounds",
-            actions: "incrementResearchRound",
-          },
-          {
-            target: "guessing",
-            guard: "researchComplete",
-            actions: "setupRounds",
-          },
-        ],
-      },
-      always: [
-        {
-          target: "topicSelection",
-          guard: and(["allPlayersSubmittedSummary", "hasMoreResearchRounds"]),
-          actions: "incrementResearchRound",
-        },
-        {
-          target: "guessing",
-          guard: and(["allPlayersSubmittedSummary", "researchComplete"]),
-          actions: "setupRounds",
-        },
-      ],
-    },
-
-    guessing: {
-      entry: ["setLieTimer", "setupCurrentRound"],
-      on: {
-        SUBMIT_LIE: {
-          actions: "submitLie",
-        },
-        TIMER_TICK: {
-          actions: "tickTimer",
-        },
-        TIMER_END: {
-          target: "presenting",
-          actions: "shuffleAnswers",
-        },
-      },
-      always: {
-        target: "presenting",
-        guard: "allPlayersSubmittedLie",
-        actions: "shuffleAnswers",
-      },
-    },
-
-    presenting: {
-      entry: "setPresentationTimer",
-      on: {
-        TIMER_TICK: {
-          actions: "tickTimer",
-        },
-        TIMER_END: "voting",
-        NEXT_PHASE: "voting",
-      },
-    },
-
-    voting: {
-      entry: "setupVoting",
-      on: {
-        MARK_TRUE: {
-          actions: "markTrue",
-        },
-        SUBMIT_VOTE: {
-          actions: "submitVote",
-        },
-        TIMER_TICK: {
-          actions: "tickTimer",
-        },
+        SUBMIT_SUBJECT: { actions: "recordSubject" },
+        SUBMIT_PREDICATE: { actions: "recordPredicate" },
+        TIMER_TICK: { actions: "tickTimer" },
         TIMER_END: "reveal",
       },
-      always: {
-        target: "reveal",
-        guard: "allPlayersVoted",
-      },
+      always: { target: "reveal", guard: "allPairsSubmittedClaim" },
     },
 
     reveal: {
-      entry: ["setRevealTimer", "calculateScores"],
+      entry: ["finalizeClaims", "clearAudienceQuestions", "setRevealTimer"],
       on: {
-        TIMER_TICK: {
-          actions: "tickTimer",
-        },
+        TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: "prep",
+      },
+    },
+
+    prep: {
+      entry: "setPrepTimer",
+      on: {
+        TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: "openingFor",
+      },
+    },
+
+    openingFor: {
+      entry: "setOpeningTimer",
+      on: {
+        SUBMIT_QUESTION: { actions: "recordAudienceQuestion" },
+        TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: "openingAgainst",
+      },
+    },
+
+    openingAgainst: {
+      entry: "setOpeningTimer",
+      on: {
+        SUBMIT_QUESTION: { actions: "recordAudienceQuestion" },
+        TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: { target: "crossExamQ1", actions: "setupCrossExam" },
+      },
+    },
+
+    crossExamQ1: {
+      entry: "setCrossExamTimer",
+      on: {
+        TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: "crossExamQ2",
+      },
+    },
+
+    crossExamQ2: {
+      entry: "setCrossExamTimer",
+      on: {
+        TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: "verdict",
+      },
+    },
+
+    verdict: {
+      entry: "setVerdictTimer",
+      on: {
+        SUBMIT_VERDICT: { actions: "recordVerdictVote" },
+        TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: "transition",
+      },
+      always: { target: "transition", guard: "allAudienceVoted" },
+    },
+
+    transition: {
+      entry: ["computeVerdictPoints", "setTransitionTimer"],
+      on: {
+        TIMER_TICK: { actions: "tickTimer" },
         TIMER_END: [
-          {
-            target: "guessing",
-            guard: "hasMoreGuessingRounds",
-            actions: "nextRound",
-          },
-          {
-            target: "leaderboard",
-            guard: "allRoundsComplete",
-          },
-        ],
-        NEXT_PHASE: [
-          {
-            target: "guessing",
-            guard: "hasMoreGuessingRounds",
-            actions: "nextRound",
-          },
-          {
-            target: "leaderboard",
-            guard: "allRoundsComplete",
-          },
+          { target: "reveal", guard: "hasMorePairsInRound", actions: "nextPair" },
+          { target: "roundBreak", guard: "isFirstRound", actions: "incrementRound" },
+          { target: "finale" },
         ],
       },
     },
 
-    leaderboard: {
+    roundBreak: {
+      entry: "setRoundBreakTimer",
+      on: {
+        TIMER_TICK: { actions: "tickTimer" },
+        TIMER_END: "claimGeneration",
+      },
+    },
+
+    finale: {
       type: "final",
     },
   },
