@@ -1,5 +1,5 @@
 {
-  "name": "@nofus/server",
+  "name": "@defense/server",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nofus/shared": "workspace:*",
+    "@defense/shared": "workspace:*",
     "nanoid": "^5.0.8"
   },
   "devDependencies": {
