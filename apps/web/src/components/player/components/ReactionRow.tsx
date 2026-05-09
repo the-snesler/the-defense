@@ -6,21 +6,26 @@ interface Props {
 
 export default function ReactionRow({ onReact }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-2 mt-3">
-      <button
-        onClick={() => onReact("LAUGH")}
-        className="bg-yellow-600 hover:bg-yellow-700 active:bg-yellow-800 rounded px-4 py-3 text-3xl"
-        aria-label="Laugh"
-      >
-        😂
-      </button>
-      <button
-        onClick={() => onReact("FIRE")}
-        className="bg-orange-600 hover:bg-orange-700 active:bg-orange-800 rounded px-4 py-3 text-3xl"
-        aria-label="Fire"
-      >
-        🔥
-      </button>
+    <div className="mt-4">
+      <div className="ph-section-title">Or react</div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => onReact("LAUGH")}
+          className="btn-reaction"
+          aria-label="Laugh"
+        >
+          <span className="emoji">😂</span>
+          <span className="lbl">LOL</span>
+        </button>
+        <button
+          onClick={() => onReact("FIRE")}
+          className="btn-reaction"
+          aria-label="Fire"
+        >
+          <span className="emoji">🔥</span>
+          <span className="lbl">Heat</span>
+        </button>
+      </div>
     </div>
   );
 }

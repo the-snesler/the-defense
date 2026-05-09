@@ -776,7 +776,7 @@ export const gameMachine = setup({
     roomCode: "",
     config: {
       minPlayers: 4,
-      maxPlayers: 10,
+      maxPlayers: 12,
       revealSeconds: 5,
       prepSeconds: 15,
       openingSeconds: 60,

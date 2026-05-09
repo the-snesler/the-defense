@@ -4,17 +4,25 @@ interface ConnectionBadgeProps {
 }
 
 export default function ConnectionBadge({ isConnected, size = 'md' }: ConnectionBadgeProps) {
-  const sizeClasses = {
-    sm: 'px-2 py-1 text-xs',
-    md: 'px-3 py-1 text-sm',
-    lg: 'px-4 py-2 text-base',
-  };
+  const fontSize = { sm: '10px', md: '11px', lg: '12px' }[size];
 
   return (
-    <div
-      className={`${sizeClasses[size]} rounded ${isConnected ? "bg-green-600" : "bg-red-600"} text-white`}
-    >
-      {isConnected ? "Connected" : "Connecting..."}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <span style={{
+        width: 7, height: 7, borderRadius: '50%', display: 'inline-block', flexShrink: 0,
+        background: isConnected ? 'var(--for)' : 'var(--against)',
+        boxShadow: isConnected ? '0 0 6px var(--for)' : '0 0 6px var(--against)',
+      }} />
+      <span style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize,
+        fontWeight: 500,
+        letterSpacing: '0.12em',
+        textTransform: 'uppercase' as const,
+        color: 'var(--ink-mute)',
+      }}>
+        {isConnected ? 'Signal Clear' : 'No Signal'}
+      </span>
     </div>
   );
 }

@@ -18,23 +18,22 @@ export default function QuestionBox({ onSubmit, submittedCount }: Props) {
       }}
       className="space-y-2"
     >
-      <input
+      <div className="ph-section-title">Submit a question</div>
+      <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Submit a question (≤140 chars)"
+        placeholder="Be honest — are you making this up as you go?"
         maxLength={140}
-        className="w-full bg-gray-700 rounded px-3 py-2 text-white placeholder-gray-400"
+        rows={3}
+        className="ph-q-input w-full resize-none outline-none"
       />
-      <button
-        type="submit"
-        disabled={!v}
-        className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded px-4 py-2 font-semibold"
-      >
-        Send Question
+      <div className="ph-counter">{text.length} / 140</div>
+      <button type="submit" disabled={!v} className="btn-ox">
+        File it
       </button>
       {submittedCount !== undefined && submittedCount > 0 && (
-        <p className="text-xs text-gray-500">
-          You've submitted {submittedCount} question{submittedCount === 1 ? "" : "s"}
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">
+          Filed {submittedCount} question{submittedCount === 1 ? "" : "s"}
         </p>
       )}
     </form>

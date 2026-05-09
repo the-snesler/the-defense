@@ -2,32 +2,49 @@ import type { Player } from "@defense/shared";
 
 interface PlayerCardProps {
   player: Player;
-  variant?: 'default' | 'success' | 'waiting' | 'presenting';
+  variant?: "default" | "success" | "waiting" | "presenting";
   showScore?: boolean;
+  seatNumber?: number;
   children?: React.ReactNode;
 }
 
 export default function PlayerCard({
   player,
-  variant = 'default',
+  variant = "default",
   showScore = false,
-  children
+  seatNumber,
+  children,
 }: PlayerCardProps) {
-  const variantClasses = {
-    default: 'border-gray-600 bg-gray-700/50',
-    success: 'border-green-500 bg-green-900/20',
-    waiting: 'border-gray-600 bg-gray-700/50',
-    presenting: 'border-blue-500 bg-blue-900/20',
-  };
+  const borderTopColor = {
+    default: "var(--brass-deep)",
+    success: "var(--brass)",
+    waiting: "var(--brass-deep)",
+    presenting: "var(--ox-glow)",
+  }[variant];
 
   return (
-    <div className={`p-4 rounded border-2 ${variantClasses[variant]}`}>
-      <div className="font-semibold text-white">{player.name}</div>
-      {showScore && (
-        <div className="text-sm text-gray-300 mt-1">
-          Score: {player.score}
-        </div>
+    <div
+      className={`player-card-host ${player.isVip ? "vip" : ""}`}
+      style={{ borderTopColor }}
+    >
+      {seatNumber !== undefined && (
+        <span className="seat-num">{String(seatNumber).padStart(2, "0")}</span>
       )}
+      <span className="player-name">{player.name}</span>
+      {showScore && (
+        <span
+          style={{
+            marginLeft: "auto",
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            color: "var(--brass)",
+            letterSpacing: "0.1em",
+          }}
+        >
+          {player.score}
+        </span>
+      )}
+      {player.isVip && <span className="vip-badge">⚖</span>}
       {children}
     </div>
   );

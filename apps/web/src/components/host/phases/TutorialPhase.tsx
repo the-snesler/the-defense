@@ -4,41 +4,70 @@ export default function TutorialPhase({ state }: HostPhaseProps) {
   const vipName =
     Object.values(state.context.players).find((p) => p.isVip)?.name ?? "VIP";
   return (
-    <div className="text-white p-8 space-y-6">
-      <h1 className="text-4xl font-bold text-center">How to Play</h1>
-      <ol className="space-y-3 text-lg list-decimal list-inside">
-        <li>
-          You'll be paired up. One of you picks a <b>subject</b>; the other
-          picks a <b>predicate</b>.
-        </li>
-        <li>The two get smashed together into a ridiculous claim.</li>
-        <li>
-          One debater argues{" "}
-          <span className="text-green-400 font-bold">FOR</span> the claim, the
-          other <span className="text-red-400 font-bold">AGAINST</span>.
-        </li>
-        <li>
-          The AGAINST side has to yes-and everything their opponent just said
-          before dismantling it. You can't just say “nuh uh”.
-        </li>
-        <li>
-          The audience submits questions during opening statements; the host
-          picks two for cross-examination.
-        </li>
-        <li>
-          The audience votes for the winner. Points scale with vote share.
-        </li>
-        <li>Round 2 has new pairings and DOUBLE POINTS.</li>
-      </ol>
-      <div className="bg-gray-800 rounded p-4 text-center">
-        <p className="text-gray-400 text-sm uppercase tracking-wide mb-2">
-          Example claim
+    <div className="tutorial-screen">
+      <section className="tutorial-copy">
+        <div className="deck-label">Procedure · The rules of engagement</div>
+        <h1>
+          How to{" "}
+          <em>
+            argue
+            <br />
+            like you mean it.
+          </em>
+        </h1>
+        <ol>
+          <li>
+            You'll be paired up. One of you draws a <b>subject</b>; the other
+            draws a <b>predicate</b>.
+          </li>
+          <li>
+            The two get smashed together into a <b>ridiculous claim</b>.
+          </li>
+          <li>
+            One argues <span className="for-mark">FOR</span>. The other argues{" "}
+            <span className="against-mark">AGAINST</span>. Thirty seconds each.
+          </li>
+          <li>
+            The audience submits questions. The court selects two for
+            cross-examination.
+          </li>
+          <li>
+            The audience <b>renders verdict</b>. Points scale with vote share.
+            Round II doubles the stakes.
+          </li>
+        </ol>
+      </section>
+
+      <section className="tutorial-example">
+        <div className="deck-label">For instance · your honor</div>
+        <div className="case-file">
+          <div className="case-file-label">The People v. Plausibility</div>
+          <div className="case-file-stamp">Exhibit A</div>
+          <p className="case-file-claim">
+            A surprisingly ambitious raccoon was the original lead singer of
+            Nickelback.
+          </p>
+          <div className="case-file-meta">
+            <span>
+              Filed <strong>Round I</strong>
+            </span>
+            <span>
+              Pot <strong>1,000 pts</strong>
+            </span>
+            <span>
+              Counsel <strong>Two</strong>
+            </span>
+          </div>
+        </div>
+        <p className="font-mono text-xs uppercase tracking-[0.22em] text-ink-mute">
+          Waiting on Counsel {vipName} to advance
+          <span className="blink-dots">
+            <span>.</span>
+            <span>.</span>
+            <span>.</span>
+          </span>
         </p>
-        <p className="text-2xl">"Shrek invented jazz."</p>
-      </div>
-      <p className="text-center text-gray-400">
-        Waiting for {vipName} to advance...
-      </p>
+      </section>
     </div>
   );
 }
