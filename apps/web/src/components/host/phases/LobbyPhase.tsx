@@ -1,5 +1,6 @@
 import type { HostPhaseProps } from "./types";
 import PlayerCard from "../../shared/PlayerCard";
+import { QRCodeSVG } from "qrcode.react";
 
 export default function LobbyPhase({ state }: HostPhaseProps) {
   const players = Object.values(state.context.players).filter(
@@ -39,6 +40,14 @@ export default function LobbyPhase({ state }: HostPhaseProps) {
           Join at <strong>thedefense.party</strong> · room
         </span>
         <b>{state.context.roomCode}</b>
+      </div>
+
+      <div className="bg-white p-4 rounded-lg w-fit mx-auto mb-6">
+        <QRCodeSVG
+          value={`${window.location.origin}/?code=${state.context.roomCode}`}
+          size={200}
+          level="M"
+        />
       </div>
 
       <div className="lobby-player-list">
