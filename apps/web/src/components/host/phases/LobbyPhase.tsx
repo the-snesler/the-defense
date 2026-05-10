@@ -37,7 +37,7 @@ export default function LobbyPhase({ state }: HostPhaseProps) {
 
       <div className="lobby-join">
         <span>
-          Join at <strong>thedefense.party</strong> · room
+          Join at <strong>{window.location.origin}</strong> · room
         </span>
         <b>{state.context.roomCode}</b>
       </div>

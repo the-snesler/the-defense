@@ -74,7 +74,7 @@ export default function HostLayout({
 
       {timer !== null && <TimerBar timer={timer} phase={phase} />}
 
-      <div className="footer-mark">The Defense · thedefense.party</div>
+      <div className="footer-mark">The Defense · {window.location.origin}</div>
     </div>
   );
 }

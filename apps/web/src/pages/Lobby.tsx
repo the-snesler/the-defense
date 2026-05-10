@@ -112,7 +112,7 @@ export default function Lobby() {
           {error && <p className="mt-4 text-center text-against">{error}</p>}
         </section>
       </main>
-      <div className="footer-mark">The Defense · thedefense.party</div>
+      <div className="footer-mark">The Defense · {window.location.origin}</div>
     </div>
   );
 }
