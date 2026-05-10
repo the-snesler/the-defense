@@ -56,15 +56,21 @@ export default function Host() {
   const reactionTimestampsRef = useRef<Map<string, number[]>>(new Map());
   const particlesRef = useRef<ReactionParticlesHandle | null>(null);
 
-  const initializeActor = useCallback((snapshot?: GameSnapshot) => {
-    if (actorRef.current) actorRef.current.stop();
-    const actor = createActor(gameMachine, { snapshot });
-    actor.subscribe((newState) => setState(newState));
-    actor.start();
-    actorRef.current = actor;
-    setState(actor.getSnapshot());
-    console.log("Game actor initialized", actor.getSnapshot());
-  }, []);
+  const initializeActor = useCallback(
+    (snapshot?: GameSnapshot) => {
+      if (actorRef.current) actorRef.current.stop();
+      const actor = createActor(gameMachine, {
+        snapshot,
+        input: { roomCode: code! },
+      });
+      actor.subscribe((newState) => setState(newState));
+      actor.start();
+      actorRef.current = actor;
+      setState(actor.getSnapshot());
+      console.log("Game actor initialized", actor.getSnapshot());
+    },
+    [code],
+  );
 
   const send = useCallback((event: Parameters<GameActor["send"]>[0]) => {
     if (actorRef.current) actorRef.current.send(event);

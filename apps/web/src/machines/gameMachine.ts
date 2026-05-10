@@ -183,6 +183,7 @@ export const gameMachine = setup({
   types: {
     context: {} as GameContext,
     events: {} as GameEvent,
+    input: {} as { roomCode: string },
   },
 
   actions: {
@@ -772,8 +773,8 @@ export const gameMachine = setup({
   id: "defense",
   initial: "lobby",
 
-  context: {
-    roomCode: "",
+  context: ({ input }) => ({
+    roomCode: input.roomCode,
     config: {
       minPlayers: 4,
       maxPlayers: 12,
@@ -802,7 +803,7 @@ export const gameMachine = setup({
     claimOffers: { subjectsByPairId: {}, predicatesByPairId: {} },
     audienceQuestionsForCurrentPair: [],
     crossExamAssignments: { q1: null, q2: null },
-  },
+  }),
 
   on: {
     PLAYER_CONNECTED: { actions: "addPlayer" },

@@ -42,7 +42,7 @@ export default function LobbyPhase({ state }: HostPhaseProps) {
         <b>{state.context.roomCode}</b>
       </div>
 
-      <div className="bg-white p-4 rounded-lg w-fit mx-auto mb-6">
+      <div className="bg-white p-4 rounded-lg w-fit mx-auto my-6">
         <QRCodeSVG
           value={`${window.location.origin}/?code=${state.context.roomCode}`}
           size={200}

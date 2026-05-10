@@ -1410,4 +1410,44 @@ body {
   .opening-timer-bar {
     width: 80vw;
   }
+
+  .public-lobby {
+    padding: 28px 16px 80px;
+    align-items: flex-start;
+  }
+
+  .public-lobby-inner {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .public-lobby-brand .lobby-tagline {
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    margin-bottom: 14px;
+  }
+
+  .public-lobby-brand .wordmark .the {
+    margin-bottom: 8px;
+    font-size: 12px;
+    letter-spacing: 0.24em;
+  }
+
+  .public-lobby-brand .wordmark .defense {
+    font-size: clamp(48px, 16vw, 96px);
+  }
+
+  .public-lobby-brand .lobby-subtitle {
+    margin: 14px 0 0;
+    font-size: 16px;
+  }
+
+  .public-lobby-panel {
+    padding: 22px 18px;
+  }
+
+  .public-input {
+    font-size: 20px;
+    padding: 12px 10px;
+  }
 }
