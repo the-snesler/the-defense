@@ -2,7 +2,7 @@
 FROM oven/bun:latest AS deps
 
 # Install pnpm using bun
-RUN bun install -g pnpm
+RUN bun install -g pnpm@9.12.0
 
 WORKDIR /app
 
