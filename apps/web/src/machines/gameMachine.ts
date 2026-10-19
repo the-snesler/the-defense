@@ -97,6 +97,18 @@ function findPairContaining(
   return null;
 }
 
+// The current pair's two players, by pairing and by assigned side. Used to
+// keep debaters from acting as audience (questions / votes) in their own
+// debate.
+function isDebaterInPair(pair: Pair, playerId: string): boolean {
+  return (
+    playerId === pair.playerAId ||
+    playerId === pair.playerBId ||
+    playerId === pair.forPlayerId ||
+    playerId === pair.againstPlayerId
+  );
+}
+
 function replacePair(
   rounds: Round[],
   roundIndex: number,
@@ -187,15 +199,40 @@ export const gameMachine = setup({
   },
 
   actions: {
+    // Any phase: a known playerId coming back resumes as the SAME player
+    // (score, pair, side, VIP all keyed by id). Unknown ids are ignored here;
+    // only the lobby may add new players (see `addPlayer`). The host page
+    // checks afterwards and kicks anyone the machine didn't accept.
+    markPlayerConnected: assign({
+      players: ({ context, event }) => {
+        if (event.type !== "PLAYER_CONNECTED") return context.players;
+        const existing = context.players[event.playerId];
+        if (!existing) return context.players;
+        if (existing.isConnected) return context.players;
+        return {
+          ...context.players,
+          [event.playerId]: { ...existing, isConnected: true },
+        };
+      },
+    }),
+
+    // Lobby only: resume a known player or add a new one (up to maxPlayers).
     addPlayer: assign({
       players: ({ context, event }) => {
         if (event.type !== "PLAYER_CONNECTED") return context.players;
         const existing = context.players[event.playerId];
         if (existing) {
+          if (existing.isConnected) return context.players;
           return {
             ...context.players,
             [event.playerId]: { ...existing, isConnected: true },
           };
+        }
+        const connectedCount = Object.values(context.players).filter(
+          (p) => p.isConnected,
+        ).length;
+        if (connectedCount >= context.config.maxPlayers) {
+          return context.players;
         }
         const isFirst = Object.keys(context.players).length === 0;
         const newPlayer: Player = {
@@ -542,11 +579,16 @@ export const gameMachine = setup({
         const round = context.rounds[context.currentRoundIndex];
         const pair = round?.pairs[context.currentPairIndex];
         if (!pair) return context.audienceQuestionsForCurrentPair;
-        // Active debaters can't submit
-        if (
-          event.senderId === pair.forPlayerId ||
-          event.senderId === pair.againstPlayerId
-        ) {
+        // Host is the authority: only known players, never the current
+        // pair's debaters (regardless of what their phone UI allowed).
+        if (!context.players[event.senderId]) {
+          return context.audienceQuestionsForCurrentPair;
+        }
+        if (isDebaterInPair(pair, event.senderId)) {
+          return context.audienceQuestionsForCurrentPair;
+        }
+        const text = typeof event.text === "string" ? event.text.trim() : "";
+        if (text.length === 0 || text.length > 140) {
           return context.audienceQuestionsForCurrentPair;
         }
         if (context.audienceQuestionsForCurrentPair.length >= 50) {
@@ -554,7 +596,7 @@ export const gameMachine = setup({
         }
         const q: AudienceQuestion = {
           id: uid("q"),
-          text: event.text,
+          text,
           submitterId: event.senderId,
           pairId: pair.id,
           submittedAt: Date.now(),
@@ -588,8 +630,8 @@ export const gameMachine = setup({
         }
       }
 
-      // Pick 2 distinct questions. Both debaters argue each one — no
-      // per-debater assignment.
+      // Pick 2 distinct questions at random — one per debater.
+      // Q1 goes to FOR (answers alone, 30s), Q2 goes to AGAINST.
       const picked = shuffle(pool).slice(0, 2);
       const q1 = picked[0];
       const q2 = picked[1] ?? picked[0];
@@ -597,8 +639,20 @@ export const gameMachine = setup({
       return {
         audienceQuestionsForCurrentPair: pool,
         crossExamAssignments: {
-          q1: q1 ? { questionId: q1.id } : null,
-          q2: q2 ? { questionId: q2.id } : null,
+          q1: q1
+            ? {
+                questionId: q1.id,
+                targetPlayerId: pair.forPlayerId,
+                targetSide: "FOR" as const,
+              }
+            : null,
+          q2: q2
+            ? {
+                questionId: q2.id,
+                targetPlayerId: pair.againstPlayerId,
+                targetSide: "AGAINST" as const,
+              }
+            : null,
         },
       };
     }),
@@ -610,11 +664,11 @@ export const gameMachine = setup({
         const round = context.rounds[ri];
         const pair = round?.pairs[context.currentPairIndex];
         if (!pair) return context.rounds;
-        // active debaters can't vote
-        if (
-          event.senderId === pair.forPlayerId ||
-          event.senderId === pair.againstPlayerId
-        ) {
+        // Host is the authority: only known players may vote, never the
+        // current pair's debaters, and only for a real side.
+        if (!context.players[event.senderId]) return context.rounds;
+        if (isDebaterInPair(pair, event.senderId)) return context.rounds;
+        if (event.side !== "FOR" && event.side !== "AGAINST") {
           return context.rounds;
         }
         // dedupe: replace any existing vote from this voter
@@ -806,13 +860,16 @@ export const gameMachine = setup({
   }),
 
   on: {
-    PLAYER_CONNECTED: { actions: "addPlayer" },
+    // After the lobby, only known players can (re)connect; see
+    // markPlayerConnected. The lobby overrides this to allow new joins.
+    PLAYER_CONNECTED: { actions: "markPlayerConnected" },
     PLAYER_DISCONNECTED: { actions: "disconnectPlayer" },
   },
 
   states: {
     lobby: {
       on: {
+        PLAYER_CONNECTED: { actions: "addPlayer" },
         START_GAME: {
           target: "tutorial",
           guard: and(["senderIsVIP", "enoughEvenPlayers"]),

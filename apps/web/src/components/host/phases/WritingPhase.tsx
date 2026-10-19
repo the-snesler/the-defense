@@ -14,31 +14,24 @@ export default function WritingPhase({ state }: HostPhaseProps) {
     .map(([id]) => players[id]?.name ?? "?");
 
   return (
-    <div className="text-white p-8 text-center space-y-8">
-      <h1 className="text-5xl font-bold">
-        Round {currentRoundIndex + 1}: Write!
-      </h1>
-      <p className="text-gray-400 text-xl">
+    <div className="host-screen">
+      <div className="host-eyebrow">Round {currentRoundIndex + 1}</div>
+      <h1 className="host-title">Write!</h1>
+      <p className="host-subtitle">
         Half of the players are writing subjects, half are writing predicates.
         Anything goes.
       </p>
 
-      <div className="grid grid-cols-2 gap-8 max-w-3xl mx-auto">
-        <div className="bg-blue-900/30 border border-blue-500/40 rounded-lg p-6">
-          <h2 className="text-2xl font-bold text-blue-300 mb-2">Subjects</h2>
-          <p className="text-5xl font-bold">{subjectCount}</p>
-          <p className="text-gray-400 text-sm mt-3">
-            {subjectWriters.join(", ")}
-          </p>
+      <div className="pool-cards">
+        <div className="pool-card">
+          <h2>Subjects</h2>
+          <span className="pool-count">{subjectCount}</span>
+          <span className="pool-writers">{subjectWriters.join(", ")}</span>
         </div>
-        <div className="bg-purple-900/30 border border-purple-500/40 rounded-lg p-6">
-          <h2 className="text-2xl font-bold text-purple-300 mb-2">
-            Predicates
-          </h2>
-          <p className="text-5xl font-bold">{predicateCount}</p>
-          <p className="text-gray-400 text-sm mt-3">
-            {predicateWriters.join(", ")}
-          </p>
+        <div className="pool-card">
+          <h2>Predicates</h2>
+          <span className="pool-count">{predicateCount}</span>
+          <span className="pool-writers">{predicateWriters.join(", ")}</span>
         </div>
       </div>
     </div>

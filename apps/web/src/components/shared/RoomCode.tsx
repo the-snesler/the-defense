@@ -3,14 +3,15 @@ interface RoomCodeProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
+// 'lg' is sized for host/TV screens, where late joiners read it from across a room.
 export default function RoomCode({ code, size = 'md' }: RoomCodeProps) {
-  const labelSize = { sm: '10px', md: '11px', lg: '12px' }[size];
-  const codeSize = { sm: '12px', md: '14px', lg: '16px' }[size];
+  const labelSize = { sm: '11px', md: '13px', lg: '20px' }[size];
+  const codeSize = { sm: '14px', md: '18px', lg: '40px' }[size];
 
   return (
-    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: labelSize, letterSpacing: '0.1em', color: 'var(--ink-mute)', textTransform: 'uppercase' as const }}>
-      Chamber{' '}
-      <span style={{ fontSize: codeSize, fontWeight: 700, color: 'var(--brass)', letterSpacing: '0.22em' }}>
+    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: labelSize, letterSpacing: '0.1em', color: 'var(--ink-dim)', textTransform: 'uppercase' as const }}>
+      Room{' '}
+      <span style={{ fontSize: codeSize, fontWeight: 700, color: 'var(--brass-soft)', letterSpacing: '0.18em' }}>
         {code}
       </span>
     </span>

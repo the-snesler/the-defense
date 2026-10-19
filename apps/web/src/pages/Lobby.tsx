@@ -1,22 +1,36 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { createRoom } from "../lib/api";
 import { ROOM_CODE_LENGTH } from "@defense/shared";
 
+// Normalize a room code from user input or the `?code=` QR link.
+// Server codes are ROOM_CODE_LENGTH chars of A-Z/2-9 (apps/server/src/utils.ts).
+function normalizeRoomCode(raw: string | null): string {
+  return (raw ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, ROOM_CODE_LENGTH);
+}
+
 export default function Lobby() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // inputs
-  const [roomCode, setRoomCode] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  // inputs — pre-filled from `?code=` (host lobby QR) on first render
+  const [roomCode, setRoomCode] = useState(() =>
+    normalizeRoomCode(searchParams.get("code")),
+  );
   const [playerName, setPlayerName] = useState("");
   // UI state
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // QR scan → code is pre-filled; jump straight to the name field.
   useEffect(() => {
-    const codeParam = searchParams.get("code");
-    if (codeParam && codeParam.length === 6) {
-      setRoomCode(codeParam.toUpperCase());
+    const code = normalizeRoomCode(searchParams.get("code"));
+    if (code.length === ROOM_CODE_LENGTH) {
+      setRoomCode(code);
+      nameInputRef.current?.focus();
     }
   }, [searchParams]);
 
@@ -71,7 +85,9 @@ export default function Lobby() {
                 <input
                   type="text"
                   value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                  onChange={(e) =>
+                    setRoomCode(normalizeRoomCode(e.target.value))
+                  }
                   maxLength={ROOM_CODE_LENGTH}
                   placeholder="67ABCD"
                   className="public-input font-mono uppercase tracking-[0.28em]"
@@ -80,6 +96,7 @@ export default function Lobby() {
               <div>
                 <label className="public-field-label">Name</label>
                 <input
+                  ref={nameInputRef}
                   type="text"
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}

@@ -48,7 +48,10 @@ export type RoomCreatedPayload = z.infer<typeof RoomCreatedPayloadSchema>;
 export const RoomJoinedPayloadSchema = z.object({
   playerId: z.string(),
   reconnectToken: z.string(),
-  state: PlayerViewStateSchema,
+  // True when the server already knew this playerId (resumed session).
+  isReconnect: z.boolean(),
+  // The relay never knows game state; the host follows up with SYNC_STATE.
+  state: PlayerViewStateSchema.optional(),
 });
 export type RoomJoinedPayload = z.infer<typeof RoomJoinedPayloadSchema>;
 
@@ -61,14 +64,18 @@ export type ErrorPayload = z.infer<typeof ErrorPayloadSchema>;
 export const PlayerConnectedPayloadSchema = z.object({
   playerId: z.string(),
   playerName: z.string(),
-  avatarId: z.number(),
+  // True when this playerId had connected to the room before (refresh,
+  // phone wake, socket drop). The host must treat it as the same player.
+  isReconnect: z.boolean(),
 });
 export type PlayerConnectedPayload = z.infer<
   typeof PlayerConnectedPayloadSchema
 >;
 
 export const HostConnectedPayloadSchema = z.object({
-  players: z.array(z.object({ id: z.string(), name: z.string() })),
+  players: z.array(
+    z.object({ id: z.string(), name: z.string(), isConnected: z.boolean() }),
+  ),
 });
 export type HostConnectedPayload = z.infer<typeof HostConnectedPayloadSchema>;
 
@@ -172,6 +179,50 @@ export type ProvideStateRecoveryPayload = z.infer<
   typeof ProvideStateRecoveryPayloadSchema
 >;
 
+// === Host -> Server (room management, handled by the relay itself) ===
+
+// Sent with target SERVER_TARGET. Removes a player from the room (e.g. an
+// unknown player trying to join after the game started) and closes their
+// socket with CloseCodes.KICKED.
+export const KickPlayerPayloadSchema = z.object({
+  playerId: z.string(),
+  code: z.string(),
+  message: z.string(),
+});
+export type KickPlayerPayload = z.infer<typeof KickPlayerPayloadSchema>;
+
+// === Connection identity ===
+
+// `target` value for messages the relay consumes itself (never forwarded).
+export const SERVER_TARGET = "SERVER";
+
+// Player ids / reconnect tokens may be generated client-side so that a join
+// is idempotent: if the socket drops before ROOM_JOINED arrives, the retry
+// carries the same id and resumes instead of creating a duplicate player.
+export const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{12,64}$/;
+
+export function isValidClientId(value: string | null | undefined): boolean {
+  return typeof value === "string" && CLIENT_ID_PATTERN.test(value);
+}
+
+export const PLAYER_NAME_MAX_LENGTH = 20;
+
+// WebSocket close codes used by the relay. Anything in 4000-4099 is terminal:
+// clients must NOT auto-reconnect after receiving one.
+export const CloseCodes = {
+  // Another socket connected with the same identity (newer tab/connection).
+  SUPERSEDED: 4000,
+  // playerId/token pair doesn't match anything in this room.
+  INVALID_IDENTITY: 4001,
+  // Host removed this player (e.g. GAME_IN_PROGRESS).
+  KICKED: 4003,
+  ROOM_NOT_FOUND: 4004,
+} as const;
+
+export function isTerminalCloseCode(code: number): boolean {
+  return code >= 4000 && code < 4100;
+}
+
 // === Message Type Constants ===
 
 export const MessageTypes = {
@@ -210,6 +261,13 @@ export const MessageTypes = {
   // Recovery
   REQUEST_STATE_RECOVERY: "REQUEST_STATE_RECOVERY",
   PROVIDE_STATE_RECOVERY: "PROVIDE_STATE_RECOVERY",
+
+  // Keep-alive (answered by the relay, never forwarded)
+  PING: "PING",
+  PONG: "PONG",
+
+  // Host -> Server
+  KICK_PLAYER: "KICK_PLAYER",
 } as const;
 
 export type MessageType = (typeof MessageTypes)[keyof typeof MessageTypes];

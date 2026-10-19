@@ -28,8 +28,8 @@ export default function TutorialPhase({ state }: HostPhaseProps) {
             <span className="against-mark">AGAINST</span>. Thirty seconds each.
           </li>
           <li>
-            The audience submits questions. The court selects two for
-            cross-examination.
+            The audience submits questions. In cross-examination, each
+            debater answers <b>one question of their own</b>.
           </li>
           <li>
             The audience <b>renders verdict</b>. Points scale with vote share.
@@ -59,7 +59,7 @@ export default function TutorialPhase({ state }: HostPhaseProps) {
             </span>
           </div>
         </div>
-        <p className="font-mono text-xs uppercase tracking-[0.22em] text-ink-mute">
+        <p className="tutorial-waiting">
           Waiting on Counsel {vipName} to advance
           <span className="blink-dots">
             <span>.</span>

@@ -27,7 +27,7 @@ function TimerBar({ timer, phase }: { timer: number; phase: string }) {
 
   return (
     <div className="timer-bar-wrap">
-      <span className="timer-bar-label">Time Remaining</span>
+      <span className="timer-bar-label">Time</span>
       <div className="timer-bar-track">
         <div
           key={animationKey}
@@ -49,13 +49,17 @@ export default function HostLayout({
   timer,
   children,
 }: HostLayoutProps) {
+  const joinHost = window.location.host;
   return (
-    <div className="stage">
-      <div className="stage-vignette" />
-
+    <div className="stage host-stage">
       <header className="chrome">
         <div className="chrome-left">
-          Chamber&nbsp;<span className="room-code-value">{roomCode}</span>
+          <span className="chrome-join">
+            Join at <strong>{joinHost}</strong>
+          </span>
+          <span className="chrome-code">
+            Room <span className="room-code-value">{roomCode}</span>
+          </span>
         </div>
         <div className="chrome-center">{getPhaseName(phase)}</div>
         <div className="chrome-right">
@@ -66,15 +70,12 @@ export default function HostLayout({
         </div>
       </header>
 
-      <main
-        style={{ minHeight: "calc(100vh - 72px - 48px)", position: "relative" }}
-      >
-        {children}
-      </main>
+      <main className="host-main">{children}</main>
 
-      {timer !== null && <TimerBar timer={timer} phase={phase} />}
-
-      <div className="footer-mark">The Defense · {window.location.origin}</div>
+      <footer className="host-footer">
+        {timer !== null && <TimerBar timer={timer} phase={phase} />}
+        <div className="footer-mark">The Defense · {joinHost}</div>
+      </footer>
     </div>
   );
 }

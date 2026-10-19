@@ -9,16 +9,21 @@ export default function PrepPhase({ state }: HostPhaseProps) {
     ? players[pair.againstPlayerId]?.name
     : "?";
   return (
-    <div className="text-white p-8 text-center space-y-6">
-      <h1 className="text-4xl font-bold">Debaters preparing...</h1>
-      {pair?.claim && (
-        <p className="text-3xl text-gray-300">"{pair.claim.text}"</p>
-      )}
-      <p className="text-gray-500">
-        <span className="text-green-400 font-semibold">{forName}</span> (FOR)
-        vs <span className="text-red-400 font-semibold">{againstName}</span>{" "}
-        (AGAINST)
-      </p>
+    <div className="host-screen">
+      <div className="host-eyebrow">Silent prep</div>
+      <h1 className="host-title">Debaters preparing...</h1>
+      {pair?.claim && <p className="host-claim">{pair.claim.text}</p>}
+      <div className="matchup">
+        <span className="side-name for">
+          {forName}
+          <span className="side-tag for">FOR</span>
+        </span>
+        <span className="vs">vs</span>
+        <span className="side-name against">
+          {againstName}
+          <span className="side-tag against">AGAINST</span>
+        </span>
+      </div>
     </div>
   );
 }

@@ -22,32 +22,38 @@ export default function LobbyPhase({ state }: HostPhaseProps) {
   }
   return (
     <div className="lobby-screen">
-      <div className="lobby-tagline">
-        A party game of unreasonable debate · case open
-      </div>
+      <div className="lobby-top">
+      <div className="lobby-brand">
+        <div className="lobby-tagline">
+          A party game of unreasonable debate · case open
+        </div>
 
-      <div className="wordmark lobby-wordmark-real">
-        <span className="the">Now Presenting</span>
-        <span className="defense">
-          The Defense<span className="amp">.</span>
-        </span>
-      </div>
+        <div className="wordmark lobby-wordmark-real">
+          <span className="the">Now Presenting</span>
+          <span className="defense">
+            The Defense<span className="amp">.</span>
+          </span>
+        </div>
 
-      <p className="lobby-subtitle">All rise. Or don't. We're not your boss.</p>
+        <p className="lobby-subtitle">All rise. Or don't. We're not your boss.</p>
+      </div>
 
       <div className="lobby-join">
-        <span>
-          Join at <strong>{window.location.origin}</strong> · room
-        </span>
-        <b>{state.context.roomCode}</b>
+        <div className="lobby-qr">
+          <QRCodeSVG
+            value={`${window.location.origin}/?code=${state.context.roomCode}`}
+            size={300}
+            level="M"
+          />
+        </div>
+        <div className="lobby-join-info">
+          <span className="lobby-join-label">Join at</span>
+          <span className="lobby-join-url">{window.location.host}</span>
+          <div className="lobby-join-divider" />
+          <span className="lobby-join-label">Room code</span>
+          <span className="lobby-join-code">{state.context.roomCode}</span>
+        </div>
       </div>
-
-      <div className="bg-white p-4 rounded-lg w-fit mx-auto my-6">
-        <QRCodeSVG
-          value={`${window.location.origin}/?code=${state.context.roomCode}`}
-          size={200}
-          level="M"
-        />
       </div>
 
       <div className="lobby-player-list">
@@ -74,7 +80,7 @@ export default function LobbyPhase({ state }: HostPhaseProps) {
         </div>
       </div>
 
-      <p className={`lobby-help ${ok ? "text-for" : "text-ink-mute"}`}>
+      <p className={`lobby-help ${ok ? "text-for" : "text-ink-dim"}`}>
         {helpText}
       </p>
     </div>

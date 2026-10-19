@@ -17,7 +17,11 @@ export default function TutorialPhase({ view, actions }: PlayerPhaseProps) {
           <span className="text-red-400 font-semibold">AGAINST</span> = poke
           holes; let FOR fill them with something worse.
         </li>
-        <li>Audience submits questions and votes the winner.</li>
+        <li>
+          Audience submits questions. In cross-exam, each debater answers one
+          question of their own (30s).
+        </li>
+        <li>Audience votes the winner.</li>
         <li>Round 2 doubles the points.</li>
       </ul>
       {isVip ? (

@@ -209,10 +209,15 @@ export function machineStateToPlayerViewState(
       const q = ctx.audienceQuestionsForCurrentPair.find(
         (qq) => qq.id === assignment.questionId,
       );
+      const target = ctx.players[assignment.targetPlayerId];
       if (q) {
         currentCrossExamQuestion = {
           text: q.text,
           questionNumber: which === "q1" ? 1 : 2,
+          targetPlayerId: assignment.targetPlayerId,
+          targetPlayerName: target?.name ?? "?",
+          targetSide: assignment.targetSide,
+          isForMe: assignment.targetPlayerId === playerId,
         };
       }
     }

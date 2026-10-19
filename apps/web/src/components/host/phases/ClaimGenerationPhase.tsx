@@ -7,14 +7,14 @@ export default function ClaimGenerationPhase({ state }: HostPhaseProps) {
     round?.pairs.filter((p) => p.chosenSubject && p.chosenPredicate).length ??
     0;
   return (
-    <div className="text-white p-8 text-center space-y-6">
-      <h1 className="text-5xl font-bold">Crafting claims...</h1>
-      <p className="text-gray-400 text-xl">
+    <div className="host-screen">
+      <div className="host-eyebrow">Drafting the charges</div>
+      <h1 className="host-title">Crafting claims...</h1>
+      <p className="host-subtitle">
         Each pair is choosing a subject and a predicate.
       </p>
-      <p className="text-3xl">
-        <span className="font-bold">{done}</span>{" "}
-        <span className="text-gray-500">/</span> {total} pairs ready
+      <p className="host-tally">
+        <b>{done}</b> / {total} pairs ready
       </p>
     </div>
   );

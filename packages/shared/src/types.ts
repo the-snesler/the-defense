@@ -107,10 +107,13 @@ export const AudienceQuestionSchema = z.object({
 export type AudienceQuestion = z.infer<typeof AudienceQuestionSchema>;
 
 // === Cross-examination assignment ===
-// Each question is a shared debate point — both debaters argue it. We track
-// only the questionId; nothing is "directed at" a single player.
+// Each debater gets their own question: Q1 is answered only by the FOR
+// debater, Q2 only by the AGAINST debater. The assignment records who has
+// the floor so host and player views don't have to re-derive it.
 export const CrossExamAssignmentSchema = z.object({
   questionId: z.string(),
+  targetPlayerId: z.string(),
+  targetSide: DebateSideSchema,
 });
 export type CrossExamAssignment = z.infer<typeof CrossExamAssignmentSchema>;
 
@@ -259,6 +262,12 @@ export const PlayerViewStateSchema = z.object({
     .object({
       text: z.string(),
       questionNumber: z.union([z.literal(1), z.literal(2)]),
+      // The debater who has the floor for this question.
+      targetPlayerId: z.string(),
+      targetPlayerName: z.string(),
+      targetSide: DebateSideSchema,
+      // True when the viewing player is the one answering.
+      isForMe: z.boolean(),
     })
     .nullable(),
 
