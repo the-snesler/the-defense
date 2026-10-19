@@ -1,5 +1,8 @@
+# Pin bun so a new release can't silently break the build (matches local dev)
+ARG BUN_VERSION=1.3.14
+
 # Stage 1: Install dependencies
-FROM oven/bun:latest AS deps
+FROM oven/bun:${BUN_VERSION} AS deps
 
 # Install pnpm using bun
 RUN bun install -g pnpm@9.12.0
@@ -51,7 +54,7 @@ COPY apps/server apps/server
 RUN pnpm --filter @defense/server build
 
 # Stage 5: Production runtime
-FROM oven/bun:slim AS runtime
+FROM oven/bun:${BUN_VERSION}-slim AS runtime
 
 WORKDIR /app
 
